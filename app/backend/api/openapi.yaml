@@ -1,0 +1,995 @@
+openapi: 3.0.3
+info:
+  title: Avitosha API
+  version: 2.0.0
+  description: Gamification layer that turns useful Avito actions into Avitosha progress.
+servers:
+  - url: http://localhost:8080
+
+tags:
+  - name: health
+  - name: auth
+  - name: game
+  - name: realtime
+
+paths:
+  /healthz:
+    get:
+      tags: [health]
+      operationId: healthz
+      responses:
+        '200':
+          description: Process is alive
+  /health/live:
+    get:
+      tags: [health]
+      operationId: healthLive
+      responses:
+        '200':
+          description: Process is alive
+  /health/ready:
+    get:
+      tags: [health]
+      operationId: healthReady
+      responses:
+        '200':
+          description: PostgreSQL is reachable
+        '503':
+          $ref: '#/components/responses/InternalError'
+
+  /api/auth/register:
+    post:
+      tags: [auth]
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthCredentials'
+      responses:
+        '201':
+          description: User and session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthCredentials'
+      responses:
+        '200':
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/auth/refresh:
+    post:
+      tags: [auth]
+      operationId: refresh
+      responses:
+        '200':
+          description: Access and refresh tokens rotated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [access_token]
+                properties:
+                  access_token:
+                    type: string
+        '401':
+          description: Refresh cookie is missing or the session expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing_refresh_cookie:
+                  value:
+                    error:
+                      code: unauthorized
+                      message: Authentication is required
+                expired_session:
+                  value:
+                    error:
+                      code: session_expired
+                      message: Session has expired or is no longer valid
+  /api/auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      responses:
+        '204':
+          description: Session revoked
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/me:
+    get:
+      tags: [auth]
+      operationId: me
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user]
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/pet:
+    get:
+      tags: [game]
+      operationId: getPet
+      security:
+        - bearerAuth: []
+        - userIdHeader: []
+      responses:
+        '200':
+          description: Avitosha profile created during user registration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PetProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      tags: [game]
+      operationId: renamePet
+      summary: Rename the current user's pet
+      description: The name is normalized and must contain only Russian letters, single spaces, or hyphens. Offensive names are rejected.
+      security:
+        - bearerAuth: []
+        - userIdHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RenamePetRequest'
+      responses:
+        '200':
+          description: Updated Avitosha profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PetProfile'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/v1/tasks:
+    get:
+      tags: [game]
+      operationId: listTasks
+      security:
+        - bearerAuth: []
+        - userIdHeader: []
+      responses:
+        '200':
+          description: Assigned tasks
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tasks]
+                properties:
+                  tasks:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TaskProgress'
+  /api/v1/tasks/{task_id}:
+    get:
+      tags: [game]
+      operationId: getTask
+      security:
+        - bearerAuth: []
+        - userIdHeader: []
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Task progress
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskProgress'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/actions:
+    post:
+      tags: [game]
+      operationId: processAction
+      security:
+        - bearerAuth: []
+        - userIdHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActionRequest'
+      responses:
+        '200':
+          description: Atomic action result; duplicate is true for an idempotent retry
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionResult'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/room:
+    get:
+      tags: [game]
+      operationId: getRoom
+      security:
+        - bearerAuth: []
+        - userIdHeader: []
+      responses:
+        '200':
+          description: Room catalog with LOCKED/PLACED state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomResponse'
+  /api/v1/story:
+    get:
+      tags: [game]
+      operationId: getStory
+      security:
+        - bearerAuth: []
+        - userIdHeader: []
+      responses:
+        '200':
+          description: FIRST_ROOM progress
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoryResponse'
+  /api/v1/daily-summary:
+    get:
+      tags: [game]
+      operationId: getDailySummary
+      security:
+        - bearerAuth: []
+        - userIdHeader: []
+      responses:
+        '200':
+          description: Current UTC-day summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DailySummary'
+  /api/v1/leaderboard:
+    get:
+      tags: [game]
+      operationId: getLeaderboard
+      security:
+        - bearerAuth: []
+        - userIdHeader: []
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [weekly]
+            default: weekly
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+      responses:
+        '200':
+          description: Weekly top and current user position
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaderboardResponse'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+  /api/v1/achievements:
+    get:
+      tags: [game]
+      operationId: getAchievements
+      security:
+        - bearerAuth: []
+        - userIdHeader: []
+      responses:
+        '200':
+          description: Achievement catalog and unlock state
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [achievements]
+                properties:
+                  achievements:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Achievement'
+  /api/v1/rewards/balance:
+    get:
+      tags: [game]
+      operationId: getRewardBalances
+      summary: Get the current user's reward balances
+      description: Returns balances actually credited from tasks, streak rewards and daily quests. AVITO_BONUS is initialized with a zero balance during user registration.
+      security:
+        - bearerAuth: []
+        - userIdHeader: []
+      responses:
+        '200':
+          description: Current and lifetime reward totals
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RewardBalanceResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/v1/rewards/wallet:
+    get:
+      tags: [game]
+      operationId: getRewardWallet
+      summary: Get the current user's reward wallet and perk roadmap
+      security:
+        - bearerAuth: []
+        - userIdHeader: []
+      responses:
+        '200':
+          description: Wallet balance, concrete perk catalog and the nearest unlock target
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RewardWallet'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/v1/ws:
+    get:
+      tags: [realtime]
+      operationId: gameWebSocket
+      description: WebSocket stream scoped to the authenticated user. Browser clients may pass access_token in the query string.
+      security:
+        - bearerAuth: []
+        - userIdHeader: []
+      parameters:
+        - name: access_token
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '101':
+          description: Switching Protocols
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    userIdHeader:
+      type: apiKey
+      in: header
+      name: X-User-ID
+      description: Temporary mock integration boundary; the UUID must belong to an existing user.
+
+  responses:
+    InvalidRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Resource conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+    AuthCredentials:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+    User:
+      type: object
+      required: [id, email]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+    AuthResponse:
+      type: object
+      required: [access_token, user]
+      properties:
+        access_token:
+          type: string
+        user:
+          $ref: '#/components/schemas/User'
+    PetMood:
+      type: string
+      enum: [CALM, CURIOUS, HAPPY, EXCITED, PROUD, SLEEPING]
+    PetCharacter:
+      type: string
+      enum: [EXPLORER, ENTREPRENEUR, MECHANIC, TRAVELER, ARCHITECT, CRAFTSPERSON]
+    CharacterProfile:
+      type: object
+      required: [code, name, description, iconKey, visualDetail, progress, target, unlocked]
+      properties:
+        code:
+          $ref: '#/components/schemas/PetCharacter'
+        name:
+          type: string
+        description:
+          type: string
+        iconKey:
+          type: string
+        visualDetail:
+          type: string
+        progress:
+          type: integer
+          minimum: 0
+        target:
+          type: integer
+          minimum: 1
+        unlocked:
+          type: boolean
+    CurrentStory:
+      type: object
+      required: [code, title, currentStage, totalStages, status]
+      properties:
+        code:
+          type: string
+        title:
+          type: string
+        currentStage:
+          type: integer
+        totalStages:
+          type: integer
+        status:
+          type: string
+          enum: [ACTIVE, COMPLETED]
+    PetProfile:
+      type: object
+      required: [id, name, level, growthXp, mood, characterProfile, currentStory]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 2
+          maxLength: 20
+          pattern: '^[А-Яа-яЁё]+(?:[ -][А-Яа-яЁё]+)*$'
+        level:
+          type: integer
+          minimum: 1
+          maximum: 5
+        growthXp:
+          type: integer
+          minimum: 0
+        nextLevelXp:
+          type: integer
+          nullable: true
+        mood:
+          $ref: '#/components/schemas/PetMood'
+        character:
+          allOf:
+            - $ref: '#/components/schemas/PetCharacter'
+          nullable: true
+        characterProfile:
+          $ref: '#/components/schemas/CharacterProfile'
+        currentStory:
+          $ref: '#/components/schemas/CurrentStory'
+    RenamePetRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 20
+          pattern: '^[А-Яа-яЁё]+(?:[ -][А-Яа-яЁё]+)*$'
+          example: Мурзик
+    ActionType:
+      type: string
+      enum: [AD_VIEWED, AD_FAVORITED, MESSAGE_SENT, AD_CREATED, DELIVERY_USED, REVIEW_LEFT, BOOKING_CREATED]
+    TaskProgress:
+      type: object
+      required: [id, code, title, description, petPhrase, actionType, progress, target, status, xpReward, avitoRewardAmount]
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        petPhrase:
+          type: string
+        actionType:
+          $ref: '#/components/schemas/ActionType'
+        category:
+          type: string
+          nullable: true
+        progress:
+          type: integer
+        target:
+          type: integer
+        status:
+          type: string
+          enum: [ACTIVE, COMPLETED, REWARDED, EXPIRED]
+        xpReward:
+          type: integer
+        roomItemCode:
+          type: string
+          nullable: true
+        avitoRewardType:
+          type: string
+          nullable: true
+        avitoRewardAmount:
+          type: integer
+        storyStage:
+          type: integer
+          nullable: true
+    ActionRequest:
+      type: object
+      additionalProperties: false
+      required: [eventId, type, occurredAt, metadata]
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/ActionType'
+        entityId:
+          type: string
+        category:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+    DomainEvent:
+      type: object
+      required: [id, type, occurredAt]
+      additionalProperties: true
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+    ActionResult:
+      type: object
+      required: [actionId, duplicate, events]
+      properties:
+        actionId:
+          type: string
+          format: uuid
+        duplicate:
+          type: boolean
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/DomainEvent'
+    RoomItem:
+      type: object
+      required: [code, name, description, status, assetKey, positionKey]
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [LOCKED, UNLOCKED, PLACED]
+        assetKey:
+          type: string
+        positionKey:
+          type: string
+        unlockTaskCode:
+          type: string
+          nullable: true
+    RoomResponse:
+      type: object
+      required: [storyCode, progress, items]
+      properties:
+        storyCode:
+          type: string
+        progress:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoomItem'
+    StoryResponse:
+      type: object
+      required: [code, title, description, currentStage, totalStages, status]
+      properties:
+        code:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        currentStage:
+          type: integer
+        totalStages:
+          type: integer
+        status:
+          type: string
+          enum: [ACTIVE, COMPLETED]
+        nextTask:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: string
+              format: uuid
+            code:
+              type: string
+            title:
+              type: string
+            roomItemCode:
+              type: string
+              nullable: true
+    DailySummary:
+      type: object
+      required: [date, actionsCount, completedTasks, earnedXp, levelBefore, levelAfter, unlockedRoomItems, storyStageBefore, storyStageAfter, weeklyScoreDelta, petMood, retention]
+      properties:
+        date:
+          type: string
+          format: date
+        actionsCount:
+          type: integer
+        completedTasks:
+          type: integer
+        earnedXp:
+          type: integer
+        levelBefore:
+          type: integer
+        levelAfter:
+          type: integer
+        unlockedRoomItems:
+          type: array
+          items:
+            type: string
+        storyStageBefore:
+          type: integer
+        storyStageAfter:
+          type: integer
+        weeklyScoreDelta:
+          type: integer
+        weeklyPosition:
+          type: integer
+          nullable: true
+        petMood:
+          $ref: '#/components/schemas/PetMood'
+        retention:
+          $ref: '#/components/schemas/RetentionOverview'
+    LeaderboardEntry:
+      type: object
+      required: [position, userId, petName, level, score, completedTasks]
+      properties:
+        position:
+          type: integer
+        userId:
+          type: string
+          format: uuid
+        petName:
+          type: string
+        level:
+          type: integer
+        score:
+          type: integer
+        completedTasks:
+          type: integer
+    LeaderboardResponse:
+      type: object
+      required: [weekStart, leaders, currentUser]
+      properties:
+        weekStart:
+          type: string
+          format: date
+        leaders:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeaderboardEntry'
+        currentUser:
+          $ref: '#/components/schemas/LeaderboardEntry'
+    Achievement:
+      type: object
+      required: [code, title, description, iconKey, unlocked]
+      properties:
+        code:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        iconKey:
+          type: string
+        unlocked:
+          type: boolean
+        unlockedAt:
+          type: string
+          format: date-time
+          nullable: true
+    RewardBalance:
+      type: object
+      required: [type, balance, earnedTotal, updatedAt]
+      properties:
+        type:
+          type: string
+          example: AVITO_BONUS
+        balance:
+          type: integer
+          format: int64
+          minimum: 0
+        earnedTotal:
+          type: integer
+          format: int64
+          minimum: 0
+        updatedAt:
+          type: string
+          format: date-time
+    RewardBalanceResponse:
+      type: object
+      required: [balances]
+      properties:
+        balances:
+          type: array
+          items:
+            $ref: '#/components/schemas/RewardBalance'
+    RewardOffer:
+      type: object
+      required: [type, amount, source]
+      properties:
+        type:
+          type: string
+        amount:
+          type: integer
+        source:
+          type: string
+          enum: [TASK_COMPLETION, DAILY_QUEST, STREAK]
+    StreakOverview:
+      type: object
+      required: [current, longest, activeToday, reward]
+      properties:
+        current:
+          type: integer
+        longest:
+          type: integer
+        lastActiveDate:
+          type: string
+          format: date
+          nullable: true
+        activeToday:
+          type: boolean
+        reward:
+          $ref: '#/components/schemas/RewardOffer'
+    DailyQuest:
+      type: object
+      required: [date, code, title, description, actionType, progress, target, status, reward]
+      properties:
+        date:
+          type: string
+          format: date
+        code:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        actionType:
+          type: string
+          enum: [AD_VIEWED, AD_FAVORITED, MESSAGE_SENT, AD_CREATED, DELIVERY_USED, REVIEW_LEFT, BOOKING_CREATED]
+        category:
+          type: string
+          nullable: true
+        progress:
+          type: integer
+        target:
+          type: integer
+        status:
+          type: string
+          enum: [ACTIVE, COMPLETED, REWARDED, EXPIRED]
+        reward:
+          $ref: '#/components/schemas/RewardOffer'
+    TomorrowDailyQuest:
+      type: object
+      required: [code, title, description, actionType, target, reward]
+      properties:
+        code:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        actionType:
+          type: string
+          enum: [AD_VIEWED, AD_FAVORITED, MESSAGE_SENT, AD_CREATED, DELIVERY_USED, REVIEW_LEFT, BOOKING_CREATED]
+        category:
+          type: string
+          nullable: true
+        target:
+          type: integer
+        reward:
+          $ref: '#/components/schemas/RewardOffer'
+    RewardGoal:
+      type: object
+      required: [code, title, rewardType, perkType, current, target, remaining]
+      properties:
+        code:
+          type: string
+        title:
+          type: string
+        rewardType:
+          type: string
+        perkType:
+          type: string
+        current:
+          type: integer
+          format: int64
+        target:
+          type: integer
+          format: int64
+        remaining:
+          type: integer
+          format: int64
+    TomorrowPreview:
+      type: object
+      required: [date, streakAfterReturn, streakReward, dailyQuest]
+      properties:
+        date:
+          type: string
+          format: date
+        streakAfterReturn:
+          type: integer
+        streakReward:
+          $ref: '#/components/schemas/RewardOffer'
+        dailyQuest:
+          $ref: '#/components/schemas/TomorrowDailyQuest'
+        nextGoal:
+          allOf:
+            - $ref: '#/components/schemas/RewardGoal'
+          nullable: true
+    RetentionOverview:
+      type: object
+      required: [streak, dailyQuest, tomorrow]
+      properties:
+        streak:
+          $ref: '#/components/schemas/StreakOverview'
+        dailyQuest:
+          $ref: '#/components/schemas/DailyQuest'
+        tomorrow:
+          $ref: '#/components/schemas/TomorrowPreview'
+    RewardCatalogEntry:
+      type: object
+      required: [code, title, description, rewardType, perkType, threshold, unlocked, progressCurrent, progressTarget, remaining]
+      properties:
+        code:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        rewardType:
+          type: string
+        perkType:
+          type: string
+        threshold:
+          type: integer
+          format: int64
+        unlocked:
+          type: boolean
+        progressCurrent:
+          type: integer
+          format: int64
+        progressTarget:
+          type: integer
+          format: int64
+        remaining:
+          type: integer
+          format: int64
+    RewardWallet:
+      type: object
+      required: [balance, catalog]
+      properties:
+        balance:
+          $ref: '#/components/schemas/RewardBalance'
+        catalog:
+          type: array
+          items:
+            $ref: '#/components/schemas/RewardCatalogEntry'
+        nextGoal:
+          allOf:
+            - $ref: '#/components/schemas/RewardGoal'
+          nullable: true

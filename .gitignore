@@ -1,0 +1,10 @@
+.idea/
+.vscode/
+.env
+.cache/
+*.log
+coverage.out
+coverage.html
+bin/
+dist/
+tmp/
