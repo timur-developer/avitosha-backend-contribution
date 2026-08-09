@@ -62,24 +62,25 @@
 
 ## Совместные файлы и мои изменения в них
 
-| Файл                                                   | Мой вклад                                                                                                                       |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
-| `internal/app/app.go`                                  | Первоначальный bootstrap/lifecycle, PostgreSQL и auth wiring, подключение registration hook и server-side session authenticator |
-| `internal/config/config.go`                            | Основная конфигурация backend; отдельные параметры позднее добавлялись командой                                                 |
-| `internal/handler/router.go`                           | Auth routes/middleware и endpoint reward wallet                                                                                 |
-| `internal/handler/game_identity.go`                    | Замена локальной проверки подписи JWT на проверку активной серверной сессии                                                     |
-| `internal/handler/game.go`                             | `GetRewardWallet` и расширение контракта handler/use case                                                                       |
-| `internal/handler/game_dto.go`                         | DTO и mapping для retention, daily quest, tomorrow preview, каталога и wallet                                                   |
-| `internal/usecase/game_service.go`                     | Включение retention в общую транзакцию действия и daily summary; расширение reward ledger                                       |
-| `internal/usecase/game_contracts.go`                   | Repository-контракты retention и каталога                                                                                       |
-| `internal/usecase/game_errors.go`                      | Ошибка отсутствующего daily quest                                                                                               |
-| `internal/repository/postgres/game_rewards.go`         | Источники наград и идемпотентный уникальный ledger                                                                              |
-| `internal/model/game.go`                               | Reward source, reward credit metadata и catalog item                                                                            |
-| `internal/model/domain_event.go`                       | События streak, daily quest и unlock каталога                                                                                   |
-| `api/openapi.yaml`                                     | Auth-контракт и retention/reward endpoints/schemas                                                                              |
-| `api/openapi_test.go`                                  | Проверки auth и retention/reward контракта                                                                                      |
-| `internal/usecase/game_service_test.go`                | Retention assertions и нормализация серии                                                                                       |
-| `internal/repository/postgres/game_repository_test.go` | Проверка первого streak reward и отсутствия повторного начисления                                                               |
+| Файл                                                                                                                 | Мой вклад                                                                                                                       |
+| -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `internal/app/app.go`                                                                                                | Первоначальный bootstrap/lifecycle, PostgreSQL и auth wiring, подключение registration hook и server-side session authenticator |
+| `internal/config/config.go`                                                                                          | Основная конфигурация backend; отдельные параметры позднее добавлялись командой                                                 |
+| `internal/handler/router.go`                                                                                         | Auth routes/middleware и endpoint reward wallet                                                                                 |
+| `internal/handler/game_identity.go`                                                                                  | Замена локальной проверки подписи JWT на проверку активной серверной сессии                                                     |
+| `internal/handler/game.go`                                                                                           | `GetRewardWallet` и расширение контракта handler/use case                                                                       |
+| `internal/handler/game_dto.go`                                                                                       | DTO и mapping для retention, daily quest, tomorrow preview, каталога и wallet                                                   |
+| `internal/usecase/game_service.go`                                                                                   | Включение retention в общую транзакцию действия и daily summary; расширение reward ledger                                       |
+| `internal/usecase/game_contracts.go`                                                                                 | Repository-контракты retention и каталога                                                                                       |
+| `internal/usecase/game_errors.go`                                                                                    | Ошибка отсутствующего daily quest                                                                                               |
+| `internal/repository/postgres/game_rewards.go`                                                                       | Источники наград и идемпотентный уникальный ledger                                                                              |
+| `internal/model/game.go`                                                                                             | Reward source, reward credit metadata и catalog item                                                                            |
+| `internal/model/domain_event.go`                                                                                     | События streak, daily quest и unlock каталога                                                                                   |
+| `api/openapi.yaml`                                                                                                   | Auth-контракт и retention/reward endpoints/schemas                                                                              |
+| `api/openapi_test.go`                                                                                                | Проверки auth и retention/reward контракта                                                                                      |
+| `internal/usecase/game_service_test.go`                                                                              | Retention assertions и нормализация серии                                                                                       |
+| `internal/repository/postgres/game_repository_test.go`                                                               | Проверка первого streak reward и отсутствия повторного начисления                                                               |
+| `README.md` командного репозитория ([README.md](https://github.com/guitaramust-sudo/Avitosha/blob/master/README.md)) | Переработка структуры, навигации, технических разделов, инструкций по запуску и материалов для проверки жюри                    |
 
 ## Командный код-контекст
 
@@ -91,6 +92,21 @@
 - smoke scripts и прочая инфраструктура, не перечисленная выше как мой вклад.
 
 Эти файлы, чтобы запустить backend и увидеть работу функционала, реализованного мной (система вовлечения retention и расширенная информация в кошельке wallet reward) внутри реального пользовательского сценария.
+
+### Документация проекта
+
+Командный `README.md` является совместным файлом. Мой вклад включал существенную переработку его структуры и подготовку документации к технической проверке проекта:
+
+- переработал структуру и оглавление;
+- сгруппировал технические сведения в понятные разделы;
+- улучшил представление инструкций по запуску и тестированию;
+- актуализировал ссылки на дополнительную документацию;
+- добавил технические детали, необходимые для оценки архитектуры и реализованного функционала.
+
+Изменения:
+
+- [`932bef8`](https://github.com/guitaramust-sudo/Avitosha/commit/932bef87902bb1d07d747e022af78a22bcd96e24) — основная переработка структуры README;
+- [`953e655`](https://github.com/guitaramust-sudo/Avitosha/commit/953e655656037a550396eb2a5521a2b3026aedfe) — технические детали и актуализация навигации.
 
 ## Исходные коммиты
 
@@ -106,5 +122,7 @@
 | Исправление reward transaction          | [`c4154d6`](https://github.com/guitaramust-sudo/Avitosha/commit/c4154d6d2c237aaee2c5d4323ecf59ac25c83b9e)                                                                                                            |
 | Инвалидизация access token после logout | [`b8745ee`](https://github.com/guitaramust-sudo/Avitosha/commit/b8745eebd2646a982e623de6e1f564e1f73ad4c7)                                                                                                            |
 | Финальная полировка                     | [`9245548`](https://github.com/guitaramust-sudo/Avitosha/commit/9245548296df9f6cb9c87bdd455b23080d5a38c5)                                                                                                            |
+| Переработка структуры командного README | [`932bef8`](https://github.com/guitaramust-sudo/Avitosha/commit/932bef87902bb1d07d747e022af78a22bcd96e24)                                                                                                            |
+| Технические детали и навигация README   | [`953e655`](https://github.com/guitaramust-sudo/Avitosha/commit/953e655656037a550396eb2a5521a2b3026aedfe)                                                                                                            |
 
 Ссылка на мои коммиты в проекте: https://github.com/guitaramust-sudo/Avitosha/commits/master/?author=timur-developer
