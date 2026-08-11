@@ -120,7 +120,7 @@
 - [`953e655`](https://github.com/guitaramust-sudo/Avitosha/commit/953e655656037a550396eb2a5521a2b3026aedfe) — технические детали и актуализация навигации.
 - [`d15c184`](https://github.com/guitaramust-sudo/Avitosha/commit/d15c18419c99540227d7badf07ec71281dd5644a) — production-конфигурация Yandex Cloud и первоначальное документирование деплоя;
 - [`f6c5f9a`](https://github.com/guitaramust-sudo/Avitosha/commit/f6c5f9a6298d238adf25e5fa7bf47c00192836ef) — уточнение production-конфигурации и сохранение tracking миграций;
-- [`0fda391`](https://github.com/guitaramust-sudo/Avitosha/commit/0fda391f3884198c19d6f27a9291f205b8971c34), [`29916c8`](https://github.com/guitaramust-sudo/Avitosha/commit/29916c8cdd52c6056502df4edf53fed452e7a10a), [`df9da49`](https://github.com/guitaramust-sudo/Avitosha/commit/df9da499d7c87f8b3f500ba53e7747ff62149c4f) — актуализация описания демо, ссылок на production/Swagger и информации о вкладе в деплой.
+- [`0fda391`](https://github.com/guitaramust-sudo/Avitosha/commit/0fda391f3884198c19d6f27a9291f205b8971c34), [`29916c8`](https://github.com/guitaramust-sudo/Avitosha/commit/29916c8dd52c6056502df4edf53fed452e7a10a), [`df9da49`](https://github.com/guitaramust-sudo/Avitosha/commit/df9da499d7c87f8b3f500ba53e7747ff62149c4f) — актуализация описания демо, ссылок на развёрнутое приложение и Swagger-документацию, а также информации о вкладе в деплой.
 
 ## Ключевые коммиты по областям вклада
 
