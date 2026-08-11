@@ -60,6 +60,14 @@
 
 Некоторые из этих инфраструктурных файлов позднее расширялись командой.
 
+### Production-деплой приложения в Yandex Cloud
+
+- `.env.prod.example`;
+- `compose.prod.yaml`;
+- `deploy/Caddyfile`;
+- `app/frontend/Dockerfile.prod`;
+- `app/frontend/nginx.prod.conf`.
+
 ## Совместные файлы и мои изменения в них
 
 | Файл                                                                                                                 | Мой вклад                                                                                                                       |
@@ -80,7 +88,10 @@
 | `api/openapi_test.go`                                                                                                | Проверки auth и retention/reward контракта                                                                                      |
 | `internal/usecase/game_service_test.go`                                                                              | Retention assertions и нормализация серии                                                                                       |
 | `internal/repository/postgres/game_repository_test.go`                                                               | Проверка первого streak reward и отсутствия повторного начисления                                                               |
-| `README.md` командного репозитория ([README.md](https://github.com/guitaramust-sudo/Avitosha/blob/master/README.md)) | Переработка структуры, навигации, технических разделов, инструкций по запуску и материалов для проверки жюри                    |
+| `.gitignore` | Разрешение versioning шаблона `.env.prod.example`; защита от попадания в Git production-данных, дампов БД, сертификатов и ключей. |
+| `app/frontend/.dockerignore` | Актуализация frontend Docker build context: исключение артефактов сборки, environment-файлов и лишних файлов. |
+| `README.md` командного репозитория ([README.md](https://github.com/guitaramust-sudo/Avitosha/blob/master/README.md)) | Переработка структуры, навигации, технических разделов, инструкций по запуску и материалов для проверки; добавление раздела с публичным демо, ссылок на production-приложение и Swagger, а также описание реализованного production-деплоя в Yandex Cloud: отдельного Docker Compose-стека, nginx, Caddy, автоматического HTTPS, изоляции сервисов, persistent volumes, миграций и health check-ов. |
+
 
 ## Командный код-контекст
 
@@ -95,24 +106,29 @@
 
 ### Документация проекта
 
-Командный `README.md` является совместным файлом. Мой вклад включал существенную переработку его структуры и подготовку документации к технической проверке проекта:
+Командный `README.md` является совместным файлом. Мой вклад включал существенную переработку его структуры, подготовку документации к технической проверке проекта и последующее документирование публичного production-деплоя:
 
 - переработал структуру и оглавление;
 - сгруппировал технические сведения в понятные разделы;
 - улучшил представление инструкций по запуску и тестированию;
 - актуализировал ссылки на дополнительную документацию;
-- добавил технические детали, необходимые для оценки архитектуры и реализованного функционала.
+- добавил технические детали, необходимые для оценки архитектуры и реализованного функционала;
+- добавил раздел публичного демо, ссылки на production-приложение и Swagger;
+- задокументировал в командном README реализованный production-деплой в Yandex Cloud и его ключевые технические характеристики.
 
 Изменения:
 
 - [`932bef8`](https://github.com/guitaramust-sudo/Avitosha/commit/932bef87902bb1d07d747e022af78a22bcd96e24) — основная переработка структуры README;
 - [`953e655`](https://github.com/guitaramust-sudo/Avitosha/commit/953e655656037a550396eb2a5521a2b3026aedfe) — технические детали и актуализация навигации.
+- [`d15c184`](https://github.com/guitaramust-sudo/Avitosha/commit/d15c18419c99540227d7badf07ec71281dd5644a) — production-конфигурация Yandex Cloud и первоначальное документирование деплоя;
+- [`f6c5f9a`](https://github.com/guitaramust-sudo/Avitosha/commit/f6c5f9a6298d238adf25e5fa7bf47c00192836ef) — уточнение production-конфигурации и сохранение tracking миграций;
+- [`0fda391`](https://github.com/guitaramust-sudo/Avitosha/commit/0fda391f3884198c19d6f27a9291f205b8971c34), [`29916c8`](https://github.com/guitaramust-sudo/Avitosha/commit/29916c8cdd52c6056502df4edf53fed452e7a10a), [`df9da49`](https://github.com/guitaramust-sudo/Avitosha/commit/df9da499d7c87f8b3f500ba53e7747ff62149c4f) — актуализация описания демо, ссылок на production/Swagger и информации о вкладе в деплой.
 
-## Исходные коммиты
+## Ключевые коммиты по областям вклада
 
 | Область                                 | Коммиты                                                                                                                                                                                                              |
 | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Инциализация проекта и PostgreSQL       | [`bc6544d`](https://github.com/guitaramust-sudo/Avitosha/commit/bc6544de6912ebb2348fbd4013a65cd952176c68), [`63a0150`](https://github.com/guitaramust-sudo/Avitosha/commit/63a0150c4fbca96f0dd613063409798fe1af7454) |
+| Инициализация проекта и PostgreSQL       | [`bc6544d`](https://github.com/guitaramust-sudo/Avitosha/commit/bc6544de6912ebb2348fbd4013a65cd952176c68), [`63a0150`](https://github.com/guitaramust-sudo/Avitosha/commit/63a0150c4fbca96f0dd613063409798fe1af7454) |
 | OpenAPI и Swagger                       | [`aee10bd`](https://github.com/guitaramust-sudo/Avitosha/commit/aee10bd56a3151e6978d2ceb7ebcc247adea2f62)                                                                                                            |
 | Auth use cases и repositories           | [`bf91c4a`](https://github.com/guitaramust-sudo/Avitosha/commit/bf91c4a24a4484bc0fdaf409886e7f25b685e7a7)                                                                                                            |
 | HTTP auth layer                         | [`36b8462`](https://github.com/guitaramust-sudo/Avitosha/commit/36b8462774d5373cef0b0b01cac7033ffa6e88c6)                                                                                                            |
@@ -124,5 +140,7 @@
 | Финальная полировка                     | [`9245548`](https://github.com/guitaramust-sudo/Avitosha/commit/9245548296df9f6cb9c87bdd455b23080d5a38c5)                                                                                                            |
 | Переработка структуры командного README | [`932bef8`](https://github.com/guitaramust-sudo/Avitosha/commit/932bef87902bb1d07d747e022af78a22bcd96e24)                                                                                                            |
 | Технические детали и навигация README   | [`953e655`](https://github.com/guitaramust-sudo/Avitosha/commit/953e655656037a550396eb2a5521a2b3026aedfe)                                                                                                            |
+| Production-деплой в Yandex Cloud | [`d15c184`](https://github.com/guitaramust-sudo/Avitosha/commit/d15c18419c99540227d7badf07ec71281dd5644a), [`f6c5f9a`](https://github.com/guitaramust-sudo/Avitosha/commit/f6c5f9a6298d238adf25e5fa7bf47c00192836ef) |
+| Демо, Swagger и описание production-деплоя в README | [`0fda391`](https://github.com/guitaramust-sudo/Avitosha/commit/0fda391f3884198c19d6f27a9291f205b8971c34), [`29916c8`](https://github.com/guitaramust-sudo/Avitosha/commit/29916c8cdd52c6056502df4edf53fed452e7a10a), [`df9da49`](https://github.com/guitaramust-sudo/Avitosha/commit/df9da499d7c87f8b3f500ba53e7747ff62149c4f) |
 
 Ссылка на мои коммиты в проекте: https://github.com/guitaramust-sudo/Avitosha/commits/master/?author=timur-developer
