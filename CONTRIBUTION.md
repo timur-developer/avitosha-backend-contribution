@@ -2,6 +2,17 @@
 
 ## Полностью реализованные мной области
 
+### Первоначальная инфраструктура
+
+- `app/backend/cmd/api/main.go` в монолитной архитектуре;
+- первоначальные `internal/config` и `internal/app/app.go`;
+- `app/backend/internal/app/registration_hook.go` и тесты;
+- `app/backend/api/spec.go`;
+- `app/backend/migrations/000001_create_users.*`;
+- `app/backend/migrations/000002_create_sessions.*`;
+- `app/backend/.golangci.yml`;
+- первоначальные backend Dockerfile, Compose и environment configuration.
+
 ### Auth и связанные модели
 
 - `app/backend/internal/auth/**`;
@@ -46,19 +57,6 @@
 - `app/backend/migrations/000006_add_reward_catalog_and_retention.up.sql`;
 - `app/backend/migrations/000006_add_reward_catalog_and_retention.down.sql`;
 - `app/backend/migrations/reward_catalog_retention_migration_test.go`.
-
-### Первоначальная инфраструктура
-
-- `app/backend/cmd/api/main.go` в монолитной архитектуре;
-- первоначальные `internal/config` и `internal/app/app.go`;
-- `app/backend/internal/app/registration_hook.go` и тесты;
-- `app/backend/api/spec.go`;
-- `app/backend/migrations/000001_create_users.*`;
-- `app/backend/migrations/000002_create_sessions.*`;
-- `app/backend/.golangci.yml`;
-- первоначальные backend Dockerfile, Compose и environment configuration.
-
-Некоторые из этих инфраструктурных файлов позднее расширялись командой.
 
 ### Production-деплой приложения в Yandex Cloud
 
@@ -113,7 +111,7 @@
 - улучшил представление инструкций по запуску и тестированию;
 - актуализировал ссылки на дополнительную документацию;
 - добавил технические детали, необходимые для оценки архитектуры и реализованного функционала;
-- добавил раздел публичного демо, ссылки на production-приложение и Swagger;
+- добавил раздел публичного демо, ссылку на развёрнутое приложение и Swagger-документацию;
 - задокументировал в командном README реализованный production-деплой в Yandex Cloud и его ключевые технические характеристики.
 
 Изменения:
