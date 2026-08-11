@@ -1,0 +1,174 @@
+name: avitosha-prod
+
+x-common-backend: &common-backend
+  build:
+    context: ./app/backend
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  init: true
+  user: "65532:65532"
+  networks:
+    - backend
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env.prod}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env.prod}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.prod}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
+
+  migrate:
+    image: migrate/migrate:v4.18.3
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./app/backend/migrations:/migrations:ro
+    entrypoint:
+      - migrate
+      - -path
+      - /migrations
+      - -database
+      - postgres://${POSTGRES_USER:?Set POSTGRES_USER in .env.prod}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.prod}@postgres:5432/${POSTGRES_DB:?Set POSTGRES_DB in .env.prod}?sslmode=disable
+    command: ["up"]
+    restart: "no"
+    networks:
+      - backend
+
+  auth-service:
+    <<: *common-backend
+    command: ["/usr/local/bin/auth-service"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      APP_ENV: prod
+      DATABASE_URL: postgres://${POSTGRES_USER:?Set POSTGRES_USER in .env.prod}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.prod}@postgres:5432/${POSTGRES_DB:?Set POSTGRES_DB in .env.prod}?sslmode=disable
+      GRPC_ADDR: :9091
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY in .env.prod}
+      JWT_ISSUER: ${JWT_ISSUER:?Set JWT_ISSUER in .env.prod}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:?Set JWT_AUDIENCE in .env.prod}
+      ACCESS_TOKEN_TTL: ${ACCESS_TOKEN_TTL:?Set ACCESS_TOKEN_TTL in .env.prod}
+      REFRESH_TOKEN_TTL: ${REFRESH_TOKEN_TTL:?Set REFRESH_TOKEN_TTL in .env.prod}
+      LOG_LEVEL: ${LOG_LEVEL:?Set LOG_LEVEL in .env.prod}
+      SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:?Set SHUTDOWN_TIMEOUT in .env.prod}
+    expose:
+      - "9091"
+
+  game-service:
+    <<: *common-backend
+    command: ["/usr/local/bin/game-service"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      APP_ENV: prod
+      DATABASE_URL: postgres://${POSTGRES_USER:?Set POSTGRES_USER in .env.prod}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.prod}@postgres:5432/${POSTGRES_DB:?Set POSTGRES_DB in .env.prod}?sslmode=disable
+      GRPC_ADDR: :9092
+      PROXYAPI_API_KEY: ${PROXYAPI_API_KEY:-}
+      PROXYAPI_BASE_URL: ${PROXYAPI_BASE_URL:?Set PROXYAPI_BASE_URL in .env.prod}
+      PROXYAPI_MODEL: ${PROXYAPI_MODEL:?Set PROXYAPI_MODEL in .env.prod}
+      PROXYAPI_TIMEOUT: ${PROXYAPI_TIMEOUT:?Set PROXYAPI_TIMEOUT in .env.prod}
+      LOG_LEVEL: ${LOG_LEVEL:?Set LOG_LEVEL in .env.prod}
+      SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:?Set SHUTDOWN_TIMEOUT in .env.prod}
+    expose:
+      - "9092"
+    networks:
+      - backend
+      - outbound
+
+  api-gateway:
+    <<: *common-backend
+    command: ["/usr/local/bin/api"]
+    depends_on:
+      auth-service:
+        condition: service_started
+      game-service:
+        condition: service_started
+    environment:
+      APP_ENV: prod
+      HTTP_ADDR: :8080
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:?Set FRONTEND_ORIGIN in .env.prod}
+      REFRESH_TOKEN_TTL: ${REFRESH_TOKEN_TTL:?Set REFRESH_TOKEN_TTL in .env.prod}
+      AUTH_GRPC_ADDR: auth-service:9091
+      GAME_GRPC_ADDR: game-service:9092
+      LOG_LEVEL: ${LOG_LEVEL:?Set LOG_LEVEL in .env.prod}
+      SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:?Set SHUTDOWN_TIMEOUT in .env.prod}
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8080/health/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    networks:
+      - backend
+      - edge
+
+  frontend:
+    build:
+      context: ./app/frontend
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    expose:
+      - "80"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - edge
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    environment:
+      CADDY_ACME_EMAIL: ${CADDY_ACME_EMAIL:?Set CADDY_ACME_EMAIL in .env.prod}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - edge
+
+volumes:
+  postgres_data:
+    name: avitosha_prod_postgres_data
+  caddy_data:
+    name: avitosha_prod_caddy_data
+  caddy_config:
+    name: avitosha_prod_caddy_config
+
+networks:
+  backend:
+    internal: true
+  edge:
+  outbound:

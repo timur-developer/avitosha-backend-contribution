@@ -1,0 +1,25 @@
+{
+	email {$CADDY_ACME_EMAIL}
+}
+
+avitosha.timurgilyazov.ru {
+	encode zstd gzip
+
+	header {
+		-Server
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	@backend path /api/* /swagger /swagger/* /health/* /healthz
+	reverse_proxy @backend api-gateway:8080 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+	}
+
+	reverse_proxy frontend:80 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+	}
+}

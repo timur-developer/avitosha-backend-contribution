@@ -8,3 +8,16 @@ coverage.html
 bin/
 dist/
 tmp/
+
+!.env.prod.example
+
+# Production data and certificate material
+*.sql
+!app/backend/migrations/*.sql
+*.dump
+*.backup
+backups/
+caddy_data/
+caddy_config/
+*.pem
+*.key
