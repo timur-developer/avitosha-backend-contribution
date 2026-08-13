@@ -48,16 +48,6 @@
 - `app/backend/internal/handler/swagger.go`;
 - auth, health, Swagger и smoke-тесты.
 
-### Retention и reward wallet
-
-- `app/backend/internal/model/retention.go`;
-- `app/backend/internal/usecase/game_rewards_retention.go`;
-- `app/backend/internal/repository/postgres/game_retention.go`;
-- `app/backend/internal/repository/postgres/game_reward_catalog.go`;
-- `app/backend/migrations/000006_add_reward_catalog_and_retention.up.sql`;
-- `app/backend/migrations/000006_add_reward_catalog_and_retention.down.sql`;
-- `app/backend/migrations/reward_catalog_retention_migration_test.go`.
-
 ### Мини-маркетплейс(классифайд) и игровая интеграция
 
 - `app/backend/internal/model/listing.go`;
@@ -77,7 +67,18 @@
 - `docs/mini-avito-api.md`;
 - `docs/mini-avito-implementation.md`.
 
-В этой области я с нуля реализовал backend объявлений: каталог, собственные объявления, публикацию, избранное, уникальные просмотры, первое сообщение продавцу и demo-покупку. Также я реализовал серверную связь подтверждённых действий с игровой прогрессией, защиту от повторных начислений и тестовое покрытие ключевых сценариев. Коммиты: [`d096166`](https://github.com/guitaramust-sudo/Avitosha/commit/d096166b414337fd815a49b7f6bc9eb6dd727661), [`4ae2ed3`](https://github.com/guitaramust-sudo/Avitosha/commit/4ae2ed3a9beb69518b70e815915b15efa96f1e06), [`5a3bcaa`](https://github.com/guitaramust-sudo/Avitosha/commit/5a3bcaa1f67fa5a30a544257c19d04c17e438148), [`8701b67`](https://github.com/guitaramust-sudo/Avitosha/commit/8701b676847a9f27ba54f93cac22438bc3bc40b1), [`6ae198d`](https://github.com/guitaramust-sudo/Avitosha/commit/6ae198d0d4b1c07f8b274403896ffbf6c4ed1f2b), [`634cfd8`](https://github.com/guitaramust-sudo/Avitosha/commit/634cfd8df62ed79d15b34c18b2aa5022aeab7fdb), [`62d4d34`](https://github.com/guitaramust-sudo/Avitosha/commit/62d4d340832ab1df8c98fc0ca4618282211c0c3e).
+В этой области я с нуля реализовал backend объявлений: каталог, собственные объявления, публикацию, избранное, уникальные просмотры, первое сообщение продавцу и demo-покупку. Также я реализовал серверную связь подтверждённых действий с игровой прогрессией, защиту от повторных начислений и тестовое покрытие ключевых сценариев. 
+
+
+### Retention и reward wallet
+
+- `app/backend/internal/model/retention.go`;
+- `app/backend/internal/usecase/game_rewards_retention.go`;
+- `app/backend/internal/repository/postgres/game_retention.go`;
+- `app/backend/internal/repository/postgres/game_reward_catalog.go`;
+- `app/backend/migrations/000006_add_reward_catalog_and_retention.up.sql`;
+- `app/backend/migrations/000006_add_reward_catalog_and_retention.down.sql`;
+- `app/backend/migrations/reward_catalog_retention_migration_test.go`.
 
 ### Production-деплой приложения в Yandex Cloud
 
