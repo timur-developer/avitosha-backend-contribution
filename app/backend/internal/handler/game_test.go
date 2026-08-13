@@ -22,6 +22,7 @@ type fakeGameUseCase struct {
 	renamePetFunc         func(context.Context, uuid.UUID, string, time.Time) (usecase.GameProfile, error)
 	listTasksFunc         func(context.Context, uuid.UUID, time.Time) ([]model.TaskProgress, error)
 	getTaskFunc           func(context.Context, uuid.UUID, uuid.UUID, time.Time) (model.TaskProgress, error)
+	getTaskAdviceFunc     func(context.Context, uuid.UUID, uuid.UUID, time.Time) (usecase.TaskAdvice, error)
 	getRoomFunc           func(context.Context, uuid.UUID, time.Time) ([]model.RoomItemProgress, error)
 	getStoryFunc          func(context.Context, uuid.UUID, time.Time) (model.StorySnapshot, error)
 	getDailyFunc          func(context.Context, uuid.UUID, time.Time) (usecase.DailySummary, error)
@@ -46,6 +47,10 @@ func (fake fakeGameUseCase) ListTasks(ctx context.Context, userID uuid.UUID, now
 
 func (fake fakeGameUseCase) GetTask(ctx context.Context, userID, taskID uuid.UUID, now time.Time) (model.TaskProgress, error) {
 	return fake.getTaskFunc(ctx, userID, taskID, now)
+}
+
+func (fake fakeGameUseCase) GetTaskAdvice(ctx context.Context, userID, taskID uuid.UUID, now time.Time) (usecase.TaskAdvice, error) {
+	return fake.getTaskAdviceFunc(ctx, userID, taskID, now)
 }
 
 func (fake fakeGameUseCase) GetRoom(ctx context.Context, userID uuid.UUID, now time.Time) ([]model.RoomItemProgress, error) {
@@ -89,6 +94,7 @@ func TestGameRoutesRequireIdentity(t *testing.T) {
 		{http.MethodGet, "/api/v1/pet"},
 		{http.MethodPatch, "/api/v1/pet"},
 		{http.MethodGet, "/api/v1/tasks"},
+		{http.MethodGet, "/api/v1/tasks/00000000-0000-0000-0000-000000000001/advice"},
 		{http.MethodPost, "/api/v1/actions"},
 		{http.MethodGet, "/api/v1/room"},
 		{http.MethodGet, "/api/v1/story"},
@@ -241,6 +247,35 @@ func TestGameReadRoutesReturnTasksRoomAndStory(t *testing.T) {
 		if recorder.Code != http.StatusOK {
 			t.Fatalf("GET %s status = %d, body = %s", path, recorder.Code, recorder.Body.String())
 		}
+	}
+}
+
+func TestGetTaskAdviceReturnsSafeAdvice(t *testing.T) {
+	userID := uuid.New()
+	taskID := uuid.New()
+	service := completeFakeGameUseCase()
+	service.getTaskAdviceFunc = func(_ context.Context, gotUserID, gotTaskID uuid.UUID, _ time.Time) (usecase.TaskAdvice, error) {
+		if gotUserID != userID || gotTaskID != taskID {
+			t.Fatalf("GetTaskAdvice(%s, %s)", gotUserID, gotTaskID)
+		}
+		return usecase.TaskAdvice{TaskID: taskID, Text: "Сравни несколько вариантов.", GeneratedByAI: true}, nil
+	}
+	router := newGameTestRouter(RouterDependencies{GameService: service})
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/tasks/"+taskID.String()+"/advice", nil)
+	request.Header.Set("X-User-ID", userID.String())
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	var body taskAdviceDTO
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.TaskID != taskID || body.Text == "" || !body.GeneratedByAI {
+		t.Fatalf("body = %+v", body)
 	}
 }
 
@@ -403,19 +438,23 @@ func TestProgressRoutesReturnDailyLeaderboardAndAchievements(t *testing.T) {
 				Current: 4, Longest: 7, LastActiveDate: gameTimePointer(now), ActiveToday: true,
 				Reward: usecase.RewardOffer{Type: usecase.DefaultRewardType, Amount: 2, Source: model.RewardSourceStreak},
 			},
-			DailyQuest: usecase.DailyQuestOverview{
-				Date: now, Code: "DAILY_CONTACT", Title: "Contact seller", Description: "Send a message",
-				ActionType: model.ActionTypeMessageSent, Progress: 1, Target: 1, Status: model.DailyQuestStatusRewarded,
-				Reward: usecase.RewardOffer{Type: usecase.DefaultRewardType, Amount: 8, Source: model.RewardSourceDailyQuest},
+			DailyGoal: usecase.DailyGoalOverview{
+				Date: now, Completed: 2, Required: 2, Status: model.DailyGoalStatusRewarded, XPReward: 30,
+				Quests: []usecase.DailyQuestOverview{{
+					Date: now, Code: "DAILY_CONTACT", Title: "Contact seller", Description: "Send a message",
+					ActionType: model.ActionTypeMessageSent, Role: model.DailyQuestRoleBuyer,
+					Progress: 1, Target: 1, Status: model.DailyQuestStatusRewarded, XPReward: 12,
+				}},
+				Reward:            usecase.RewardOffer{Type: usecase.DefaultRewardType, Amount: 5, Source: model.RewardSourceDailyGoal},
+				BalancedCompleted: true,
+				BalancedReward:    usecase.RewardOffer{Type: usecase.DefaultRewardType, Amount: 3, Source: model.RewardSourceBalancedDay},
 			},
 			Tomorrow: usecase.TomorrowPreview{
 				Date: now.AddDate(0, 0, 1), StreakAfterReturn: 5,
 				StreakReward: usecase.RewardOffer{Type: usecase.DefaultRewardType, Amount: 2, Source: model.RewardSourceStreak},
-				DailyQuest: usecase.DailyQuestPreview{
-					Code: "DAILY_DISCOVER", Title: "Discover", Description: "View 3 ads",
-					ActionType: model.ActionTypeAdViewed, Target: 3,
-					Reward: usecase.RewardOffer{Type: usecase.DefaultRewardType, Amount: 5, Source: model.RewardSourceDailyQuest},
-				},
+				TasksCount:   5, Required: 2, BuyerTasks: 2, SellerTasks: 2, UniversalTasks: 1, XPReward: 30,
+				Reward:         usecase.RewardOffer{Type: usecase.DefaultRewardType, Amount: 5, Source: model.RewardSourceDailyGoal},
+				BalancedReward: usecase.RewardOffer{Type: usecase.DefaultRewardType, Amount: 3, Source: model.RewardSourceBalancedDay},
 			},
 		}}, nil
 	}
@@ -473,6 +512,9 @@ func completeFakeGameUseCase() fakeGameUseCase {
 		listTasksFunc: func(context.Context, uuid.UUID, time.Time) ([]model.TaskProgress, error) { return nil, nil },
 		getTaskFunc: func(context.Context, uuid.UUID, uuid.UUID, time.Time) (model.TaskProgress, error) {
 			return model.TaskProgress{}, nil
+		},
+		getTaskAdviceFunc: func(context.Context, uuid.UUID, uuid.UUID, time.Time) (usecase.TaskAdvice, error) {
+			return usecase.TaskAdvice{}, nil
 		},
 		getRoomFunc: func(context.Context, uuid.UUID, time.Time) ([]model.RoomItemProgress, error) { return nil, nil },
 		getStoryFunc: func(context.Context, uuid.UUID, time.Time) (model.StorySnapshot, error) {

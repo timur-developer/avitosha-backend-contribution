@@ -21,6 +21,10 @@ func TestLoadFromEnv(t *testing.T) {
 		"SHUTDOWN_TIMEOUT":  "3s",
 		"ACCESS_TOKEN_TTL":  "20m",
 		"REFRESH_TOKEN_TTL": "720h",
+		"PROXYAPI_API_KEY":  "proxy-key",
+		"PROXYAPI_BASE_URL": "https://proxy.example/openrouter/v1",
+		"PROXYAPI_MODEL":    "qwen/test-model",
+		"PROXYAPI_TIMEOUT":  "2s",
 	}
 
 	cfg, err := LoadFromEnv(mapGetter(env))
@@ -48,6 +52,12 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if cfg.RefreshTokenTTL != 30*24*time.Hour {
 		t.Fatalf("RefreshTokenTTL = %s, want 720h", cfg.RefreshTokenTTL)
+	}
+	if cfg.ProxyAPIKey != "proxy-key" || cfg.ProxyAPIBaseURL != "https://proxy.example/openrouter/v1" {
+		t.Fatalf("ProxyAPI config = key %q, url %q", cfg.ProxyAPIKey, cfg.ProxyAPIBaseURL)
+	}
+	if cfg.ProxyAPIModel != "qwen/test-model" || cfg.ProxyAPITimeout != 2*time.Second {
+		t.Fatalf("ProxyAPI model = %q, timeout = %s", cfg.ProxyAPIModel, cfg.ProxyAPITimeout)
 	}
 }
 
@@ -80,6 +90,59 @@ func TestLoadFromEnvUsesDefaults(t *testing.T) {
 	}
 	if cfg.RefreshTokenTTL != defaultRefreshTokenTTL {
 		t.Fatalf("RefreshTokenTTL = %s, want %s", cfg.RefreshTokenTTL, defaultRefreshTokenTTL)
+	}
+	if cfg.ProxyAPIBaseURL != defaultProxyAPIBaseURL || cfg.ProxyAPIModel != defaultProxyAPIModel {
+		t.Fatalf("ProxyAPI defaults = url %q, model %q", cfg.ProxyAPIBaseURL, cfg.ProxyAPIModel)
+	}
+	if cfg.ProxyAPITimeout != defaultProxyAPITimeout {
+		t.Fatalf("ProxyAPITimeout = %s, want %s", cfg.ProxyAPITimeout, defaultProxyAPITimeout)
+	}
+}
+
+func TestLoadFromEnvLoadsObjectStorage(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := LoadFromEnv(mapGetter(map[string]string{
+		"HTTP_ADDR": "127.0.0.1:8080", "DATABASE_URL": "postgres://test",
+		"FRONTEND_ORIGIN": "http://localhost:3000", "JWT_SIGNING_KEY": "test-key",
+		"JWT_ISSUER": "avitosha", "JWT_AUDIENCE": "avitosha-web",
+		"S3_BUCKET": "photos", "S3_ACCESS_KEY_ID": "access", "S3_SECRET_ACCESS_KEY": "secret",
+		"S3_PUBLIC_BASE_URL": "https://cdn.example.test/photos/", "S3_UPLOAD_TTL": "5m",
+		"S3_MAX_FILE_SIZE": "2048",
+	}))
+	if err != nil {
+		t.Fatalf("LoadFromEnv() error = %v", err)
+	}
+	if !cfg.ObjectStorageEnabled() || cfg.S3Bucket != "photos" || cfg.S3UploadTTL != 5*time.Minute || cfg.S3MaxFileSize != 2048 {
+		t.Fatalf("object storage config = %+v", cfg)
+	}
+	if cfg.S3PublicBaseURL != "https://cdn.example.test/photos" {
+		t.Fatalf("S3PublicBaseURL = %q", cfg.S3PublicBaseURL)
+	}
+}
+
+func TestLoadFromEnvRejectsPartialObjectStorageConfig(t *testing.T) {
+	t.Parallel()
+
+	_, err := LoadFromEnv(mapGetter(map[string]string{
+		"HTTP_ADDR": "127.0.0.1:8080", "DATABASE_URL": "postgres://test",
+		"FRONTEND_ORIGIN": "http://localhost:3000", "JWT_SIGNING_KEY": "test-key",
+		"JWT_ISSUER": "avitosha", "JWT_AUDIENCE": "avitosha-web", "S3_BUCKET": "photos",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "S3_ACCESS_KEY_ID") {
+		t.Fatalf("error = %v, want incomplete S3 config error", err)
+	}
+}
+
+func TestLoadFromEnvRejectsInvalidProxyAPITimeout(t *testing.T) {
+	t.Parallel()
+	_, err := LoadFromEnv(mapGetter(map[string]string{
+		"HTTP_ADDR": "127.0.0.1:8080", "DATABASE_URL": "postgres://test",
+		"FRONTEND_ORIGIN": "http://localhost:3000", "JWT_SIGNING_KEY": "test-key",
+		"JWT_ISSUER": "avitosha", "JWT_AUDIENCE": "avitosha-web", "PROXYAPI_TIMEOUT": "0s",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "PROXYAPI_TIMEOUT") {
+		t.Fatalf("error = %v, want PROXYAPI_TIMEOUT", err)
 	}
 }
 
@@ -204,6 +267,49 @@ func TestLoadFromEnvRequiresJWTConfig(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("error = %q, want %s", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestRoleValidationKeepsSecretsScopedToOwningService(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		env      map[string]string
+		validate func(Config) error
+	}{
+		{
+			name: "gateway does not need database or JWT",
+			env: map[string]string{
+				"HTTP_ADDR": ":8080", "FRONTEND_ORIGIN": "http://localhost:3000",
+				"AUTH_GRPC_ADDR": "auth:9091", "GAME_GRPC_ADDR": "game:9092",
+			},
+			validate: Config.ValidateGateway,
+		},
+		{
+			name: "auth does not need HTTP or ProxyAPI key",
+			env: map[string]string{
+				"DATABASE_URL": "postgres://auth", "GRPC_ADDR": ":9091",
+				"JWT_SIGNING_KEY": "secret", "JWT_ISSUER": "avitosha", "JWT_AUDIENCE": "web",
+			},
+			validate: Config.ValidateAuthService,
+		},
+		{
+			name: "game does not need HTTP or JWT",
+			env: map[string]string{
+				"DATABASE_URL": "postgres://game", "GRPC_ADDR": ":9092",
+			},
+			validate: Config.ValidateGameService,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := loadForRole(mapGetter(test.env), test.validate); err != nil {
+				t.Fatalf("loadForRole() error = %v", err)
 			}
 		})
 	}

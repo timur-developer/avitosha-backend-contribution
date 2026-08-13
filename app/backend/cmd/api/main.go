@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	cfg, err := config.Load()
+	cfg, err := config.LoadGateway()
 	if err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "api failed: load config: %v\n", err)
 		os.Exit(1)
@@ -21,7 +21,7 @@ func main() {
 		Level: cfg.LogLevel.Level(),
 	}))
 
-	application, err := app.New(context.Background(), cfg, logger)
+	application, err := app.NewGateway(cfg, logger)
 	if err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "api failed: %v\n", err)
 		os.Exit(1)

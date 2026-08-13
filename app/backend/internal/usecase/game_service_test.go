@@ -3,6 +3,8 @@ package usecase
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -53,10 +55,22 @@ type gameTestRepository struct {
 	balances            map[string]model.RewardBalance
 	rewarded            map[string]struct{}
 	streak              model.UserStreak
-	dailyQuest          model.DailyQuestProgress
+	dailyQuests         []model.DailyQuestProgress
+	dailyGoal           model.UserDailyGoal
 	catalog             []model.RewardCatalogItem
 	templates           []model.DailyQuestTemplate
 	questReadsForUpdate int
+}
+
+type gameTestAdviceGenerator struct {
+	input AdviceGenerationInput
+	text  string
+	err   error
+}
+
+func (generator *gameTestAdviceGenerator) Generate(_ context.Context, input AdviceGenerationInput) (string, error) {
+	generator.input = input
+	return generator.text, generator.err
 }
 
 func newGameTestRepository(userID uuid.UUID) *gameTestRepository {
@@ -121,11 +135,11 @@ func newGameTestRepository(userID uuid.UUID) *gameTestRepository {
 			{Code: "SELLER_LIMIT_PACK", RewardType: avitoBonus, PerkType: "LIMIT_PACK", Threshold: 160, SortOrder: 5},
 		},
 		templates: []model.DailyQuestTemplate{
-			{Code: "DAILY_DISCOVER", Title: "Discover", ActionType: model.ActionTypeAdViewed, TargetValue: 3, RewardType: avitoBonus, RewardAmount: 5, SortOrder: 1, IsActive: true, CreatedAt: now, UpdatedAt: now},
-			{Code: "DAILY_FAVORITE", Title: "Favorite", ActionType: model.ActionTypeAdFavorited, TargetValue: 1, RewardType: avitoBonus, RewardAmount: 6, SortOrder: 2, IsActive: true, CreatedAt: now, UpdatedAt: now},
-			{Code: "DAILY_CONTACT", Title: "Contact", ActionType: model.ActionTypeMessageSent, TargetValue: 1, RewardType: avitoBonus, RewardAmount: 8, SortOrder: 3, IsActive: true, CreatedAt: now, UpdatedAt: now},
-			{Code: "DAILY_SELLER_STEP", Title: "Seller step", ActionType: model.ActionTypeAdCreated, TargetValue: 1, RewardType: avitoBonus, RewardAmount: 10, SortOrder: 4, IsActive: true, CreatedAt: now, UpdatedAt: now},
-			{Code: "DAILY_DELIVERY", Title: "Delivery", ActionType: model.ActionTypeDeliveryUsed, TargetValue: 1, RewardType: avitoBonus, RewardAmount: 12, SortOrder: 5, IsActive: true, CreatedAt: now, UpdatedAt: now},
+			{Code: "DAILY_DISCOVER", Title: "Discover", ActionType: model.ActionTypeAdViewed, Role: model.DailyQuestRoleBuyer, TargetValue: 3, XPReward: 8, RewardType: avitoBonus, SortOrder: 1, IsActive: true, CreatedAt: now, UpdatedAt: now},
+			{Code: "DAILY_FAVORITE", Title: "Favorite", ActionType: model.ActionTypeAdFavorited, Role: model.DailyQuestRoleBuyer, TargetValue: 1, XPReward: 10, RewardType: avitoBonus, SortOrder: 2, IsActive: true, CreatedAt: now, UpdatedAt: now},
+			{Code: "DAILY_SELLER_STEP", Title: "Seller step", ActionType: model.ActionTypeAdCreated, Role: model.DailyQuestRoleSeller, TargetValue: 1, XPReward: 15, RewardType: avitoBonus, SortOrder: 3, IsActive: true, CreatedAt: now, UpdatedAt: now},
+			{Code: "DAILY_IMPROVE", Title: "Improve", ActionType: model.ActionTypeListingImproved, Role: model.DailyQuestRoleSeller, TargetValue: 1, XPReward: 12, RewardType: avitoBonus, SortOrder: 4, IsActive: true, CreatedAt: now, UpdatedAt: now},
+			{Code: "DAILY_DELIVERY", Title: "Delivery", ActionType: model.ActionTypeDeliveryUsed, Role: model.DailyQuestRoleUniversal, TargetValue: 1, XPReward: 10, RewardType: avitoBonus, SortOrder: 5, IsActive: true, CreatedAt: now, UpdatedAt: now},
 		},
 	}
 }
@@ -203,9 +217,10 @@ func (repository *gameTestRepository) ExpireDailyQuestsBefore(
 	date time.Time,
 	_ time.Time,
 ) error {
-	if repository.dailyQuest.Quest.ID != uuid.Nil && repository.dailyQuest.Quest.QuestDate.Before(date) &&
-		(repository.dailyQuest.Quest.Status == model.DailyQuestStatusActive || repository.dailyQuest.Quest.Status == model.DailyQuestStatusCompleted) {
-		repository.dailyQuest.Quest.Status = model.DailyQuestStatusExpired
+	for index := range repository.dailyQuests {
+		if repository.dailyQuests[index].Quest.QuestDate.Before(date) && repository.dailyQuests[index].Quest.Status == model.DailyQuestStatusActive {
+			repository.dailyQuests[index].Quest.Status = model.DailyQuestStatusExpired
+		}
 	}
 	return nil
 }
@@ -214,37 +229,59 @@ func (repository *gameTestRepository) AssignDailyQuest(
 	_ context.Context,
 	quest model.UserDailyQuest,
 ) (model.UserDailyQuest, error) {
-	if repository.dailyQuest.Quest.ID == uuid.Nil || !repository.dailyQuest.Quest.QuestDate.Equal(quest.QuestDate) {
-		repository.dailyQuest = model.DailyQuestProgress{
-			Template: repository.questTemplateByCode(quest.TemplateCode),
-			Quest:    quest,
+	for _, item := range repository.dailyQuests {
+		if item.Quest.QuestDate.Equal(quest.QuestDate) && item.Quest.TemplateCode == quest.TemplateCode {
+			return item.Quest, nil
 		}
 	}
-	return repository.dailyQuest.Quest, nil
+	repository.dailyQuests = append(repository.dailyQuests, model.DailyQuestProgress{
+		Template: repository.questTemplateByCode(quest.TemplateCode),
+		Quest:    quest,
+	})
+	return quest, nil
 }
 
-func (repository *gameTestRepository) GetDailyQuestProgress(
+func (repository *gameTestRepository) ListDailyQuestProgress(
 	_ context.Context,
 	_ uuid.UUID,
 	date time.Time,
-) (model.DailyQuestProgress, error) {
-	if repository.dailyQuest.Quest.ID == uuid.Nil || !repository.dailyQuest.Quest.QuestDate.Equal(date) {
-		return model.DailyQuestProgress{}, ErrDailyQuestNotFound
+) ([]model.DailyQuestProgress, error) {
+	items := make([]model.DailyQuestProgress, 0, 5)
+	for _, item := range repository.dailyQuests {
+		if item.Quest.QuestDate.Equal(date) {
+			items = append(items, item)
+		}
 	}
-	return repository.dailyQuest, nil
+	return items, nil
 }
 
-func (repository *gameTestRepository) GetDailyQuestProgressForUpdate(
+func (repository *gameTestRepository) ListDailyQuestProgressForUpdate(
 	_ context.Context,
 	_ uuid.UUID,
 	date time.Time,
-) (model.DailyQuestProgress, error) {
+) ([]model.DailyQuestProgress, error) {
 	repository.questReadsForUpdate++
-	return repository.GetDailyQuestProgress(context.Background(), uuid.Nil, date)
+	return repository.ListDailyQuestProgress(context.Background(), uuid.Nil, date)
 }
 
 func (repository *gameTestRepository) UpdateDailyQuest(_ context.Context, quest model.UserDailyQuest) error {
-	repository.dailyQuest.Quest = quest
+	for index := range repository.dailyQuests {
+		if repository.dailyQuests[index].Quest.ID == quest.ID {
+			repository.dailyQuests[index].Quest = quest
+		}
+	}
+	return nil
+}
+
+func (repository *gameTestRepository) GetOrCreateDailyGoal(_ context.Context, candidate model.UserDailyGoal) (model.UserDailyGoal, error) {
+	if repository.dailyGoal.ID == uuid.Nil || !repository.dailyGoal.GoalDate.Equal(candidate.GoalDate) {
+		repository.dailyGoal = candidate
+	}
+	return repository.dailyGoal, nil
+}
+
+func (repository *gameTestRepository) UpdateDailyGoal(_ context.Context, goal model.UserDailyGoal) error {
+	repository.dailyGoal = goal
 	return nil
 }
 
@@ -347,6 +384,58 @@ func (repository *gameTestRepository) AssignStoryTask(
 	return model.TaskProgress{Task: task, Progress: progress}, nil
 }
 
+func (repository *gameTestRepository) GetTaskProgress(
+	_ context.Context,
+	_ uuid.UUID,
+	taskID uuid.UUID,
+) (model.TaskProgress, error) {
+	progress, ok := repository.userTasks[taskID]
+	if !ok {
+		return model.TaskProgress{}, ErrTaskNotFound
+	}
+	return model.TaskProgress{Task: repository.taskByID(taskID), Progress: progress}, nil
+}
+
+func TestGetTaskAdviceUsesGeneratorContext(t *testing.T) {
+	userID := uuid.New()
+	repository := newGameTestRepository(userID)
+	generator := &gameTestAdviceGenerator{text: "  Сравни фотографии и условия доставки.  "}
+	service := NewGameService(GameServiceDependencies{
+		Repository: repository, TxManager: &gameTestTxManager{}, IDGenerator: uuid.New, Advice: generator,
+	})
+	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+	taskID := repository.tasksByStage[1].ID
+
+	advice, err := service.GetTaskAdvice(context.Background(), userID, taskID, now)
+	if err != nil {
+		t.Fatalf("GetTaskAdvice() error = %v", err)
+	}
+	if advice.Text != "Сравни фотографии и условия доставки." || !advice.GeneratedByAI {
+		t.Fatalf("advice = %+v", advice)
+	}
+	if generator.input.PetName != DefaultPetName || generator.input.TaskTitle != "Стол" || generator.input.Target != 5 {
+		t.Fatalf("generator input = %+v", generator.input)
+	}
+}
+
+func TestGetTaskAdviceFallsBackWhenGeneratorFails(t *testing.T) {
+	userID := uuid.New()
+	repository := newGameTestRepository(userID)
+	service := NewGameService(GameServiceDependencies{
+		Repository: repository, TxManager: &gameTestTxManager{}, IDGenerator: uuid.New,
+		Advice: &gameTestAdviceGenerator{err: errors.New("provider unavailable")},
+	})
+	taskID := repository.tasksByStage[1].ID
+
+	advice, err := service.GetTaskAdvice(context.Background(), userID, taskID, time.Now())
+	if err != nil {
+		t.Fatalf("GetTaskAdvice() error = %v", err)
+	}
+	if advice.GeneratedByAI || advice.Text == "" || !strings.Contains(advice.Text, "5 объявлений") {
+		t.Fatalf("fallback advice = %+v", advice)
+	}
+}
+
 func (repository *gameTestRepository) FindMatchingActiveTasksForUpdate(
 	_ context.Context,
 	_ uuid.UUID,
@@ -381,6 +470,37 @@ func (repository *gameTestRepository) InsertAction(
 	}
 	repository.actions[candidate.EventID] = candidate
 	return candidate, true, nil
+}
+
+func (repository *gameTestRepository) CountUserActions(_ context.Context, userID uuid.UUID, actionType model.ActionType, category, entityID *string) (int, error) {
+	count := 0
+	for _, action := range repository.actions {
+		if action.UserID == userID && action.ActionType == actionType && (category == nil || equalStringPointers(action.Category, category)) && (entityID == nil || equalStringPointers(action.EntityID, entityID)) { count++ }
+	}
+	return count, nil
+}
+
+func (repository *gameTestRepository) CountDistinctUserActionEntities(_ context.Context, userID uuid.UUID, actionType model.ActionType) (int, error) {
+	entities := make(map[string]struct{})
+	for _, action := range repository.actions {
+		if action.UserID != userID || action.ActionType != actionType || action.EntityID == nil {
+			continue
+		}
+		entities[*action.EntityID] = struct{}{}
+	}
+	return len(entities), nil
+}
+
+func (repository *gameTestRepository) CountUserActionsOnDate(_ context.Context, userID uuid.UUID, actionType model.ActionType, date time.Time, excludeEventID uuid.UUID) (int, error) {
+	count := 0
+	for _, action := range repository.actions {
+		if action.UserID == userID && action.EventID != excludeEventID && action.ActionType == actionType && action.OccurredAt.UTC().Truncate(24*time.Hour).Equal(date.UTC().Truncate(24*time.Hour)) { count++ }
+	}
+	return count, nil
+}
+
+func (repository *gameTestRepository) GetProductActionRule(_ context.Context, actionType model.ActionType) (model.ProductActionRule, error) {
+	return model.ProductActionRule{ActionType: actionType, XPReward: 40}, nil
 }
 
 func (repository *gameTestRepository) CompleteAction(
@@ -496,6 +616,7 @@ func (repository *gameTestRepository) UpdateActivityScores(
 	repository.scores.TravelScore += delta.Travel
 	repository.scores.RealEstateScore += delta.RealEstate
 	repository.scores.ServicesScore += delta.Services
+	repository.scores.QualityScore += delta.Quality
 	repository.scores.UpdatedAt = now
 	return repository.scores, nil
 }
@@ -585,7 +706,7 @@ func TestProcessActionCompletesFirstRoomStageAndIsIdempotent(t *testing.T) {
 	if progress.Status != model.TaskStatusRewarded || progress.Progress != 5 || progress.RewardedAt == nil {
 		t.Fatalf("task progress = %+v", progress)
 	}
-	if repository.pet.GrowthXP != 30 || repository.pet.Level != 1 || repository.pet.Mood != model.PetMoodProud {
+	if repository.pet.GrowthXP != 38 || repository.pet.Level != 1 || repository.pet.Mood != model.PetMoodProud {
 		t.Fatalf("pet = %+v", repository.pet)
 	}
 	if repository.story.CurrentStage != 1 || repository.story.Status != model.StoryStatusActive {
@@ -594,7 +715,7 @@ func TestProcessActionCompletesFirstRoomStageAndIsIdempotent(t *testing.T) {
 	if _, ok := repository.roomItems["DESK"]; !ok {
 		t.Fatal("DESK was not unlocked")
 	}
-	if repository.weekly.Score != 100 || repository.weekly.EarnedXP != 30 {
+	if repository.weekly.Score != 108 || repository.weekly.EarnedXP != 38 {
 		t.Fatalf("weekly progress = %+v", repository.weekly)
 	}
 	if repository.daily.ActionsCount != 5 || repository.daily.CompletedTasks != 1 {
@@ -603,7 +724,7 @@ func TestProcessActionCompletesFirstRoomStageAndIsIdempotent(t *testing.T) {
 	if repository.questReadsForUpdate == 0 {
 		t.Fatal("daily quest was not read with a lock in the action flow")
 	}
-	if balance := repository.balances[DefaultRewardType]; balance.Balance != 12 || balance.EarnedTotal != 12 {
+	if balance := repository.balances[DefaultRewardType]; balance.Balance != 10 || balance.EarnedTotal != 10 {
 		t.Fatalf("reward balance = %+v", balance)
 	}
 	rewardEventFound := false
@@ -624,8 +745,8 @@ func TestProcessActionCompletesFirstRoomStageAndIsIdempotent(t *testing.T) {
 	if err != nil || !duplicate.Duplicate {
 		t.Fatalf("duplicate result = %+v, error = %v", duplicate, err)
 	}
-	if repository.pet.GrowthXP != 30 || repository.weekly.Score != 100 || repository.daily.ActionsCount != 5 ||
-		repository.balances[DefaultRewardType].Balance != 12 {
+	if repository.pet.GrowthXP != 38 || repository.weekly.Score != 108 || repository.daily.ActionsCount != 5 ||
+		repository.balances[DefaultRewardType].Balance != 10 {
 		t.Fatal("duplicate action changed rewards or aggregates")
 	}
 	if len(publisher.batches) != 5 {
@@ -675,7 +796,7 @@ func TestEndToEndCompletesFirstRoom(t *testing.T) {
 		repository.story.CompletedAt == nil {
 		t.Fatalf("story = %+v", repository.story)
 	}
-	if repository.pet.GrowthXP != 230 || repository.pet.Level != 2 || repository.pet.Mood != model.PetMoodProud {
+	if repository.pet.GrowthXP != 303 || repository.pet.Level != 3 || repository.pet.Mood != model.PetMoodHappy {
 		t.Fatalf("pet = %+v", repository.pet)
 	}
 	if repository.pet.Character == nil || *repository.pet.Character != model.PetCharacterExplorer {
@@ -686,16 +807,16 @@ func TestEndToEndCompletesFirstRoom(t *testing.T) {
 			t.Errorf("room item %s is missing", itemCode)
 		}
 	}
-	if repository.weekly.EarnedXP != 230 || repository.weekly.CompletedTasks != 5 ||
-		repository.weekly.CompletedStages != 5 || repository.weekly.Score != 580 {
+	if repository.weekly.EarnedXP != 303 || repository.weekly.CompletedTasks != 5 ||
+		repository.weekly.CompletedStages != 5 || repository.weekly.Score != 653 {
 		t.Fatalf("weekly = %+v", repository.weekly)
 	}
 	if repository.daily.ActionsCount != 9 || repository.daily.CompletedTasks != 5 ||
-		repository.daily.EarnedXP != 230 || repository.daily.StoryStageAfter != 5 {
+		repository.daily.EarnedXP != 303 || repository.daily.StoryStageAfter != 5 {
 		t.Fatalf("daily = %+v", repository.daily)
 	}
-	if balance := repository.balances[DefaultRewardType]; balance.Balance != 92 || balance.EarnedTotal != 92 {
-		t.Fatalf("reward balance = %+v, want 92", balance)
+	if balance := repository.balances[DefaultRewardType]; balance.Balance != 90 || balance.EarnedTotal != 90 {
+		t.Fatalf("reward balance = %+v, want 90", balance)
 	}
 	for _, code := range []string{"FIRST_STEP", "HOUSEWARMING", "EXPLORER", "IN_TOUCH", "FIRST_AD", "ROOM_COMPLETE"} {
 		if _, ok := repository.achievements[code]; !ok {
@@ -703,12 +824,23 @@ func TestEndToEndCompletesFirstRoom(t *testing.T) {
 		}
 	}
 	summary, err := service.GetDailySummary(context.Background(), userID, last.Now)
-	if err != nil || summary.Progress.EarnedXP != 230 || summary.WeeklyPosition == nil || *summary.WeeklyPosition != 1 ||
-		summary.Retention.DailyQuest.Code != "DAILY_SELLER_STEP" || summary.Retention.DailyQuest.Status != model.DailyQuestStatusRewarded {
+	if err != nil || summary.Progress.EarnedXP != 303 || summary.WeeklyPosition == nil || *summary.WeeklyPosition != 1 ||
+		summary.Retention.DailyGoal.Completed < 2 || summary.Retention.DailyGoal.Status != model.DailyGoalStatusRewarded {
 		t.Fatalf("daily summary = %+v, error = %v", summary, err)
 	}
+	roleCounts := map[model.DailyQuestRole]int{}
+	for _, quest := range summary.Retention.DailyGoal.Quests {
+		roleCounts[quest.Role]++
+	}
+	if len(summary.Retention.DailyGoal.Quests) != 5 || roleCounts[model.DailyQuestRoleBuyer] != 2 ||
+		roleCounts[model.DailyQuestRoleSeller] != 2 || roleCounts[model.DailyQuestRoleUniversal] != 1 {
+		t.Fatalf("daily quest roles = %+v", roleCounts)
+	}
+	if !summary.Retention.DailyGoal.BalancedCompleted || !summary.Retention.Streak.ActiveToday {
+		t.Fatalf("retention goal = %+v, streak = %+v", summary.Retention.DailyGoal, summary.Retention.Streak)
+	}
 	leaderboard, err := service.GetLeaderboard(context.Background(), userID, 10, last.Now)
-	if err != nil || leaderboard.CurrentUser.Score != 580 || len(leaderboard.Leaders) != 1 {
+	if err != nil || leaderboard.CurrentUser.Score != 653 || len(leaderboard.Leaders) != 1 {
 		t.Fatalf("leaderboard = %+v, error = %v", leaderboard, err)
 	}
 	achievements, err := service.GetAchievements(context.Background(), userID, last.Now)
@@ -716,11 +848,11 @@ func TestEndToEndCompletesFirstRoom(t *testing.T) {
 		t.Fatalf("achievements = %+v, error = %v", achievements, err)
 	}
 	balances, err := service.GetRewardBalances(context.Background(), userID, last.Now)
-	if err != nil || len(balances) != 1 || balances[0].Balance != 92 {
+	if err != nil || len(balances) != 1 || balances[0].Balance != 90 {
 		t.Fatalf("reward balances = %+v, error = %v", balances, err)
 	}
 	wallet, err := service.GetRewardWallet(context.Background(), userID, last.Now)
-	if err != nil || wallet.Balance.Balance != 92 || wallet.NextGoal == nil || wallet.NextGoal.Item.Code != "AUTOTEKA_CHECK" {
+	if err != nil || wallet.Balance.Balance != 90 || wallet.NextGoal == nil || wallet.NextGoal.Item.Code != "AUTOTEKA_CHECK" {
 		t.Fatalf("reward wallet = %+v, error = %v", wallet, err)
 	}
 
@@ -728,9 +860,225 @@ func TestEndToEndCompletesFirstRoom(t *testing.T) {
 	if err != nil || !duplicate.Duplicate {
 		t.Fatalf("duplicate = %+v, error = %v", duplicate, err)
 	}
-	if repository.weekly.Score != 580 || repository.pet.GrowthXP != 230 || repository.daily.ActionsCount != 9 ||
-		repository.balances[DefaultRewardType].Balance != 92 {
+	if repository.weekly.Score != 653 || repository.pet.GrowthXP != 303 || repository.daily.ActionsCount != 9 ||
+		repository.balances[DefaultRewardType].Balance != 90 {
 		t.Fatal("duplicate final action changed completed room state")
+	}
+}
+
+func TestHistoricalStoryCatchUpUnlocksAchievement(t *testing.T) {
+	userID := mustGameUUID("00000000-0000-0000-0000-000000000001")
+	repository := newGameTestRepository(userID)
+	txManager := &gameTestTxManager{}
+	service := NewGameService(GameServiceDependencies{
+		Repository: repository, TxManager: txManager, IDGenerator: uuid.New,
+	})
+	now := time.Date(2026, 8, 5, 9, 0, 0, 0, time.UTC)
+	furniture := "FURNITURE"
+
+	// The listing was created before the story reaches CREATE_FIRST_AD.
+	createdAt := now.Add(-time.Hour)
+	createdEvent := uuid.New()
+	repository.actions[uuid.New()] = model.UserAction{
+		ID: uuid.New(), UserID: userID, EventID: createdEvent,
+		ActionType: model.ActionTypeAdCreated, OccurredAt: createdAt,
+		ProcessedAt: &createdAt, Metadata: json.RawMessage(`{"source":"marketplace.publish"}`),
+	}
+
+	actions := []struct {
+		actionType model.ActionType
+		category   *string
+	}{
+		{model.ActionTypeAdViewed, &furniture},
+		{model.ActionTypeAdViewed, &furniture},
+		{model.ActionTypeAdViewed, &furniture},
+		{model.ActionTypeAdViewed, &furniture},
+		{model.ActionTypeAdViewed, &furniture},
+		{model.ActionTypeAdFavorited, &furniture},
+		{model.ActionTypeMessageSent, nil},
+	}
+
+	var result ProcessActionResult
+	for index, action := range actions {
+		result, _ = service.ProcessAction(context.Background(), ProcessActionCommand{
+			UserID: userID, EventID: uuid.New(), ActionType: action.actionType,
+			EntityID: gameStringPointer("historical-entity-" + string(rune('a'+index))), Category: action.category,
+			Metadata: json.RawMessage(`{}`), OccurredAt: now.Add(time.Duration(index) * time.Minute),
+			Now: now.Add(time.Duration(index) * time.Minute),
+		})
+	}
+
+	if repository.story.CurrentStage != 4 {
+		t.Fatalf("story stage = %d, want 4 after historical catch-up", repository.story.CurrentStage)
+	}
+	createTask := repository.tasksByStage[4]
+	if progress := repository.userTasks[createTask.ID]; progress.Status != model.TaskStatusRewarded {
+		t.Fatalf("CREATE_FIRST_AD progress = %+v, want rewarded", progress)
+	}
+	if _, ok := repository.roomItems["PLANT"]; !ok {
+		t.Fatal("PLANT was not unlocked by historical catch-up")
+	}
+	if _, ok := repository.achievements["FIRST_AD"]; !ok {
+		t.Fatal("FIRST_AD achievement was not unlocked by historical catch-up")
+	}
+	foundAchievementEvent := false
+	for _, event := range result.Events {
+		if event.Type != model.DomainEventAchievementUnlocked {
+			continue
+		}
+		var payload struct{ Code string `json:"code"` }
+		if err := json.Unmarshal(event.Payload, &payload); err == nil && payload.Code == "FIRST_AD" {
+			foundAchievementEvent = true
+		}
+	}
+	if !foundAchievementEvent {
+		t.Fatal("FIRST_AD achievement event was not emitted")
+	}
+}
+
+func TestMarketplacePublicationUnlocksFirstAdAchievementImmediately(t *testing.T) {
+	userID := mustGameUUID("00000000-0000-0000-0000-000000000002")
+	repository := newGameTestRepository(userID)
+	service := NewGameService(GameServiceDependencies{
+		Repository: repository, TxManager: &gameTestTxManager{}, IDGenerator: uuid.New,
+	})
+	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+
+	result, err := service.ProcessActionWithinTx(context.Background(), ProcessActionCommand{
+		UserID: userID, EventID: uuid.New(), ActionType: model.ActionTypeAdCreated,
+		EntityID: gameStringPointer("listing-1"), Metadata: json.RawMessage(`{"source":"marketplace.publish"}`),
+		OccurredAt: now, Now: now,
+	})
+	if err != nil {
+		t.Fatalf("trusted publication action error = %v", err)
+	}
+	if _, ok := repository.achievements["FIRST_AD"]; !ok {
+		t.Fatal("FIRST_AD was not unlocked at publication time")
+	}
+	found := false
+	for _, event := range result.Events {
+		if event.Type != model.DomainEventAchievementUnlocked {
+			continue
+		}
+		var payload struct{ Code string `json:"code"` }
+		if json.Unmarshal(event.Payload, &payload) == nil && payload.Code == "FIRST_AD" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("publication did not emit FIRST_AD achievement event")
+	}
+}
+
+func TestMarketplaceMessageUnlocksInTouchAchievementImmediately(t *testing.T) {
+	userID := uuid.New()
+	repository := newGameTestRepository(userID)
+	service := NewGameService(GameServiceDependencies{
+		Repository: repository, TxManager: &gameTestTxManager{}, IDGenerator: uuid.New,
+	})
+	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+
+	if _, err := service.ProcessActionWithinTx(context.Background(), ProcessActionCommand{
+		UserID: userID, EventID: uuid.New(), ActionType: model.ActionTypeMessageSent,
+		EntityID: gameStringPointer("listing-1"), Metadata: json.RawMessage(`{"source":"marketplace.message"}`),
+		OccurredAt: now, Now: now,
+	}); err != nil {
+		t.Fatalf("marketplace message action error = %v", err)
+	}
+	if _, ok := repository.achievements["IN_TOUCH"]; !ok {
+		t.Fatal("IN_TOUCH was not unlocked after first marketplace message")
+	}
+}
+
+func TestMarketplaceDistinctViewsUnlockExplorerAchievement(t *testing.T) {
+	userID := uuid.New()
+	repository := newGameTestRepository(userID)
+	service := NewGameService(GameServiceDependencies{
+		Repository: repository, TxManager: &gameTestTxManager{}, IDGenerator: uuid.New,
+	})
+	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+
+	entities := []string{"listing-1", "listing-2", "listing-3", "listing-1", "listing-4", "listing-5"}
+	for index, entity := range entities {
+		if _, err := service.ProcessActionWithinTx(context.Background(), ProcessActionCommand{
+			UserID: userID, EventID: uuid.New(), ActionType: model.ActionTypeAdViewed,
+			EntityID: &entity, Metadata: json.RawMessage(`{"source":"marketplace.view"}`),
+			OccurredAt: now.Add(time.Duration(index) * time.Minute),
+			Now:       now.Add(time.Duration(index) * time.Minute),
+		}); err != nil {
+			t.Fatalf("marketplace view %d error = %v", index+1, err)
+		}
+	}
+	if _, ok := repository.achievements["EXPLORER"]; !ok {
+		t.Fatal("EXPLORER was not unlocked after five distinct listing views")
+	}
+}
+
+func TestManualAdCreatedActionDoesNotUnlockFirstAdAchievement(t *testing.T) {
+	userID := mustGameUUID("00000000-0000-0000-0000-000000000003")
+	repository := newGameTestRepository(userID)
+	service := NewGameService(GameServiceDependencies{
+		Repository: repository, TxManager: &gameTestTxManager{}, IDGenerator: uuid.New,
+	})
+	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+
+	if _, err := service.ProcessAction(context.Background(), ProcessActionCommand{
+		UserID: userID, EventID: uuid.New(), ActionType: model.ActionTypeAdCreated,
+		EntityID: gameStringPointer("listing-1"), Metadata: json.RawMessage(`{"source":"marketplace.publish"}`),
+		OccurredAt: now, Now: now,
+	}); err != nil {
+		t.Fatalf("manual action error = %v", err)
+	}
+	if _, ok := repository.achievements["FIRST_AD"]; ok {
+		t.Fatal("untrusted action unlocked FIRST_AD")
+	}
+}
+
+func TestCharacterChangesFromExplorerToLeadingSellerOrQualityActivity(t *testing.T) {
+	tests := []struct {
+		name       string
+		actionType model.ActionType
+		want       model.PetCharacter
+	}{
+		{name: "seller", actionType: model.ActionTypeAdCreated, want: model.PetCharacterEntrepreneur},
+		{name: "quality", actionType: model.ActionTypeListingImproved, want: model.PetCharacterCraftsperson},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			userID := uuid.New()
+			repository := newGameTestRepository(userID)
+			service := NewGameService(GameServiceDependencies{
+				Repository: repository, TxManager: &gameTestTxManager{}, IDGenerator: uuid.New,
+			})
+			now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+
+		for index := 0; index < CharacterUnlockTarget; index++ {
+			if _, err := service.ProcessAction(context.Background(), ProcessActionCommand{
+				UserID: userID, EventID: uuid.New(), ActionType: model.ActionTypeAdViewed,
+				OccurredAt: now.Add(time.Duration(index) * time.Minute),
+				Now:        now.Add(time.Duration(index) * time.Minute),
+			}); err != nil {
+				t.Fatalf("explorer action %d error = %v", index+1, err)
+			}
+		}
+		if repository.pet.Character == nil || *repository.pet.Character != model.PetCharacterExplorer {
+			t.Fatalf("initial character = %v, want EXPLORER", repository.pet.Character)
+		}
+
+		for index := 0; index < CharacterUnlockTarget+1; index++ {
+			if _, err := service.ProcessAction(context.Background(), ProcessActionCommand{
+				UserID: userID, EventID: uuid.New(), ActionType: tt.actionType,
+				OccurredAt: now.Add(time.Duration(CharacterUnlockTarget+index) * time.Minute),
+				Now:        now.Add(time.Duration(CharacterUnlockTarget+index) * time.Minute),
+			}); err != nil {
+				t.Fatalf("%s action %d error = %v", tt.name, index+1, err)
+			}
+		}
+		if repository.pet.Character == nil || *repository.pet.Character != tt.want {
+			t.Fatalf("final character = %v, want %s", repository.pet.Character, tt.want)
+		}
+	})
 	}
 }
 

@@ -1,0 +1,178 @@
+syntax = "proto3";
+
+package avitosha.v1;
+
+option go_package = "github.com/guitaramust-sudo/Avitosha/app/backend/internal/gen/avitosha/v1;avitoshav1";
+
+service AuthService {
+  rpc Register(RegisterRequest) returns (AuthenticationResponse);
+  rpc Login(LoginRequest) returns (AuthenticationResponse);
+  rpc Refresh(RefreshRequest) returns (RefreshResponse);
+  rpc Logout(LogoutRequest) returns (Empty);
+  rpc GetCurrentUser(GetCurrentUserRequest) returns (UserResponse);
+  rpc AuthenticateAccessToken(AuthenticateAccessTokenRequest) returns (AuthenticatedUserResponse);
+}
+
+service GameService {
+  rpc EnsureProfile(UserAtRequest) returns (JsonResponse);
+  rpc RenamePet(RenamePetRequest) returns (JsonResponse);
+  rpc ListTasks(UserAtRequest) returns (JsonResponse);
+  rpc GetTask(TaskRequest) returns (JsonResponse);
+  rpc GetTaskAdvice(TaskRequest) returns (JsonResponse);
+  rpc GetRoom(UserAtRequest) returns (JsonResponse);
+  rpc GetStory(UserAtRequest) returns (JsonResponse);
+  rpc GetDailySummary(UserAtRequest) returns (JsonResponse);
+  rpc GetLeaderboard(LeaderboardRequest) returns (JsonResponse);
+  rpc GetAchievements(UserAtRequest) returns (JsonResponse);
+  rpc GetRewardBalances(UserAtRequest) returns (JsonResponse);
+  rpc GetRewardWallet(UserAtRequest) returns (JsonResponse);
+  rpc ProcessAction(ProcessActionRequest) returns (JsonResponse);
+  rpc ListListingCategories(Empty) returns (JsonResponse);
+  rpc ListPublicListings(ListingsRequest) returns (JsonResponse);
+  rpc GetPublicListing(ListingRequest) returns (JsonResponse);
+  rpc ListMyListings(ListingsRequest) returns (JsonResponse);
+  rpc CreateListing(MarketplaceCommand) returns (JsonResponse);
+  rpc UpdateListing(MarketplaceCommand) returns (JsonResponse);
+  rpc PublishListing(ListingCommand) returns (JsonResponse);
+  rpc UnpublishListing(ListingCommand) returns (JsonResponse);
+  rpc AddListingFavorite(ListingCommand) returns (JsonResponse);
+  rpc RemoveListingFavorite(ListingCommand) returns (JsonResponse);
+  rpc ListFavoriteListings(ListingsRequest) returns (JsonResponse);
+  rpc RegisterListingView(ListingCommand) returns (JsonResponse);
+  rpc ContactSeller(MarketplaceCommand) returns (JsonResponse);
+  rpc ListListingMessages(ListingRequest) returns (JsonResponse);
+  rpc PurchaseListing(PurchaseListingRequest) returns (JsonResponse);
+  rpc SubscribeEvents(SubscribeEventsRequest) returns (stream EventBatch);
+}
+
+message Empty {}
+
+message RegisterRequest {
+  string email = 1;
+  string password = 2;
+  string user_agent = 3;
+}
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+  string user_agent = 3;
+}
+
+message RefreshRequest { string refresh_token = 1; }
+message LogoutRequest { string refresh_token = 1; }
+
+message GetCurrentUserRequest {
+  string user_id = 1;
+  string session_id = 2;
+}
+
+message AuthenticateAccessTokenRequest { string access_token = 1; }
+
+message User {
+  string id = 1;
+  string email = 2;
+  string created_at = 3;
+  string updated_at = 4;
+}
+
+message AuthenticationResponse {
+  User user = 1;
+  string access_token = 2;
+  string refresh_token = 3;
+}
+
+message RefreshResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+}
+
+message UserResponse { User user = 1; }
+
+message AuthenticatedUserResponse {
+  string user_id = 1;
+  string session_id = 2;
+}
+
+message UserAtRequest {
+  string user_id = 1;
+  string at = 2;
+}
+
+message RenamePetRequest {
+  string user_id = 1;
+  string name = 2;
+  string at = 3;
+}
+
+message TaskRequest {
+  string user_id = 1;
+  string task_id = 2;
+  string at = 3;
+}
+
+message LeaderboardRequest {
+  string user_id = 1;
+  int32 limit = 2;
+  string at = 3;
+}
+
+message ProcessActionRequest {
+  string user_id = 1;
+  string event_id = 2;
+  string action_type = 3;
+  optional string entity_id = 4;
+  optional string category = 5;
+  bytes metadata_json = 6;
+  string occurred_at = 7;
+  string now = 8;
+}
+
+message ListingsRequest {
+  optional string user_id = 1;
+  optional string category = 2;
+  string query = 3;
+  int32 limit = 4;
+  int32 offset = 5;
+}
+
+message ListingRequest {
+  string listing_id = 1;
+  optional string user_id = 2;
+}
+
+message ListingCommand {
+  string user_id = 1;
+  string listing_id = 2;
+  string at = 3;
+	string event_id = 4;
+}
+
+message MarketplaceCommand {
+  string user_id = 1;
+  string listing_id = 2;
+  string category_code = 3;
+  string title = 4;
+  string description = 5;
+  int64 price_kopecks = 6;
+  repeated string photo_urls = 7;
+  string message_body = 8;
+  string at = 9;
+	string event_id = 10;
+}
+
+message PurchaseListingRequest {
+  string user_id = 1;
+  string listing_id = 2;
+  bool delivery_used = 3;
+  string at = 4;
+	string event_id = 5;
+}
+
+// Each RPC is explicitly typed; payload_json is a temporary anti-corruption
+// envelope for the existing domain read models. It keeps JSON out of routing
+// and can be replaced message-by-message without changing HTTP clients.
+message JsonResponse { bytes payload_json = 1; }
+
+message SubscribeEventsRequest { string user_id = 1; }
+message EventBatch { bytes payload_json = 1; }

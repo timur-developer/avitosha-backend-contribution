@@ -58,6 +58,27 @@
 - `app/backend/migrations/000006_add_reward_catalog_and_retention.down.sql`;
 - `app/backend/migrations/reward_catalog_retention_migration_test.go`.
 
+### Мини-маркетплейс и игровая интеграция
+
+- `app/backend/internal/model/listing.go`;
+- `app/backend/internal/handler/marketplace.go` и `marketplace_error_test.go`;
+- `app/backend/internal/usecase/marketplace.go`, `marketplace_test.go` и `marketplace_game_rules_test.go`;
+- `app/backend/internal/repository/postgres/marketplace.go` и `marketplace_test.go`;
+- `app/backend/migrations/000007_add_marketplace.*`;
+- `app/backend/migrations/000008_add_marketplace_game_actions.*`;
+- `app/backend/migrations/000009_make_demo_deals_user_scoped.*`;
+- `app/backend/migrations/000010_add_first_room_furniture_seed.*`;
+- `app/backend/migrations/000012_prevent_favorite_reward_replays.*`;
+- `app/backend/migrations/marketplace_migration_test.go`;
+- `app/backend/migrations/marketplace_game_actions_migration_test.go`;
+- `app/backend/migrations/favorite_reward_migration_test.go`;
+- `app/backend/internal/client/grpc/gameclient/marketplace_gateway_test.go`;
+- `app/backend/internal/rpc/errors_test.go`;
+- `docs/mini-avito-api.md`;
+- `docs/mini-avito-implementation.md`.
+
+В этой области я с нуля реализовал backend объявлений: каталог, собственные объявления, публикацию, избранное, уникальные просмотры, первое сообщение продавцу и demo-покупку. Также я реализовал серверную связь подтверждённых действий с игровой прогрессией, защиту от повторных начислений и тестовое покрытие ключевых сценариев. Коммиты: [`d096166`](https://github.com/guitaramust-sudo/Avitosha/commit/d096166b414337fd815a49b7f6bc9eb6dd727661), [`4ae2ed3`](https://github.com/guitaramust-sudo/Avitosha/commit/4ae2ed3a9beb69518b70e815915b15efa96f1e06), [`5a3bcaa`](https://github.com/guitaramust-sudo/Avitosha/commit/5a3bcaa1f67fa5a30a544257c19d04c17e438148), [`8701b67`](https://github.com/guitaramust-sudo/Avitosha/commit/8701b676847a9f27ba54f93cac22438bc3bc40b1), [`6ae198d`](https://github.com/guitaramust-sudo/Avitosha/commit/6ae198d0d4b1c07f8b274403896ffbf6c4ed1f2b), [`634cfd8`](https://github.com/guitaramust-sudo/Avitosha/commit/634cfd8df62ed79d15b34c18b2aa5022aeab7fdb), [`62d4d34`](https://github.com/guitaramust-sudo/Avitosha/commit/62d4d340832ab1df8c98fc0ca4618282211c0c3e).
+
 ### Production-деплой приложения в Yandex Cloud
 
 - `.env.prod.example`;
@@ -89,6 +110,12 @@
 | `.gitignore` | Разрешение versioning шаблона `.env.prod.example`; защита от попадания в Git production-данных, дампов БД, сертификатов и ключей. |
 | `app/frontend/.dockerignore` | Актуализация frontend Docker build context: исключение артефактов сборки, environment-файлов и лишних файлов. |
 | `README.md` командного репозитория ([README.md](https://github.com/guitaramust-sudo/Avitosha/blob/master/README.md)) | Переработка структуры, навигации, технических разделов, инструкций по запуску и материалов для проверки; добавление раздела с публичным демо, ссылок на production-приложение и Swagger, а также описание реализованного production-деплоя в Yandex Cloud: отдельного Docker Compose-стека, nginx, Caddy, автоматического HTTPS, изоляции сервисов, persistent volumes, миграций и health check-ов. |
+| `app/backend/api/openapi.yaml` | Добавил контракт Mini-Avito: DTO, маршруты и описания ошибок для объявлений, избранного, сообщений и demo-покупки. |
+| `app/backend/api/proto/avitosha/v1/services.proto`, `internal/gen/avitosha/v1/services*.go` | Расширил внутренний gRPC-контракт, чтобы подтверждённое действие маркетплейса обрабатывалось игровым сервисом. |
+| `internal/app/app.go`, `internal/app/microservices.go`, `internal/handler/router.go` | Подключил marketplace к приложению и маршрутам, а также связал gateway с game-service. |
+| `internal/handler/game_identity.go`, `middleware.go` | Усилил идентификацию пользователя и защитил marketplace-сценарии авторизацией. |
+| `internal/model/game.go`, `domain_event.go`, `internal/usecase/game_contracts.go`, `game_errors.go`, `game_service.go`, `game_rules.go` | Интегрировал marketplace actions в существующий игровой контур: XP, FIRST_ROOM, награды, достижения и события после commit. |
+| `internal/repository/postgres/game_actions.go`, `game_progress.go`, `game_repository.go`, `error_mapping_test.go` | Добавил идемпотентность и целостность обработки действий, прогресса и ошибок marketplace. |
 
 
 ## Командный код-контекст
@@ -98,6 +125,7 @@
 - основное игровое ядро, XP, комнаты, сюжет, leaderboard, достижения и характер питомца (реализовывали мои коллеги Стас и Сергей);
 - базовые game repositories и миграции `000003`–`000005`;
 - WebSocket hub и публикация событий;
+- последующие доработки UI мини-маркетплейса, загрузки файлов и MinIO, а также наборы ежедневных заданий - это совместная работа команды; они сохранены только как контекст, необходимый для запуска полного демо;
 - smoke scripts и прочая инфраструктура, не перечисленная выше как мой вклад.
 
 Эти файлы, чтобы запустить backend и увидеть работу функционала, реализованного мной (система вовлечения retention и расширенная информация в кошельке wallet reward) внутри реального пользовательского сценария.
@@ -140,5 +168,6 @@
 | Технические детали и навигация README   | [`953e655`](https://github.com/guitaramust-sudo/Avitosha/commit/953e655656037a550396eb2a5521a2b3026aedfe)                                                                                                            |
 | Production-деплой в Yandex Cloud | [`d15c184`](https://github.com/guitaramust-sudo/Avitosha/commit/d15c18419c99540227d7badf07ec71281dd5644a), [`f6c5f9a`](https://github.com/guitaramust-sudo/Avitosha/commit/f6c5f9a6298d238adf25e5fa7bf47c00192836ef) |
 | Демо, Swagger и описание production-деплоя в README | [`0fda391`](https://github.com/guitaramust-sudo/Avitosha/commit/0fda391f3884198c19d6f27a9291f205b8971c34), [`29916c8`](https://github.com/guitaramust-sudo/Avitosha/commit/29916c8cdd52c6056502df4edf53fed452e7a10a), [`df9da49`](https://github.com/guitaramust-sudo/Avitosha/commit/df9da499d7c87f8b3f500ba53e7747ff62149c4f) |
+| Mini-маркетплейс и связь с прогрессом питомца | [`d096166`](https://github.com/guitaramust-sudo/Avitosha/commit/d096166b414337fd815a49b7f6bc9eb6dd727661), [`4ae2ed3`](https://github.com/guitaramust-sudo/Avitosha/commit/4ae2ed3a9beb69518b70e815915b15efa96f1e06), [`5a3bcaa`](https://github.com/guitaramust-sudo/Avitosha/commit/5a3bcaa1f67fa5a30a544257c19d04c17e438148), [`8701b67`](https://github.com/guitaramust-sudo/Avitosha/commit/8701b676847a9f27ba54f93cac22438bc3bc40b1), [`6ae198d`](https://github.com/guitaramust-sudo/Avitosha/commit/6ae198d0d4b1c07f8b274403896ffbf6c4ed1f2b), [`634cfd8`](https://github.com/guitaramust-sudo/Avitosha/commit/634cfd8df62ed79d15b34c18b2aa5022aeab7fdb), [`62d4d34`](https://github.com/guitaramust-sudo/Avitosha/commit/62d4d340832ab1df8c98fc0ca4618282211c0c3e) |
 
 Ссылка на мои коммиты в проекте: https://github.com/guitaramust-sudo/Avitosha/commits/master/?author=timur-developer

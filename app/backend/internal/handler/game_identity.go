@@ -11,23 +11,30 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/guitaramust-sudo/Avitosha/app/backend/internal/usecase"
+	"github.com/guitaramust-sudo/Avitosha/app/backend/internal/config"
 )
 
 type gameUserContextKey struct{}
 
-func GameIdentity(logger *slog.Logger, authenticator AccessTokenAuthenticator) func(http.Handler) http.Handler {
+func GameIdentity(logger *slog.Logger, authenticator AccessTokenAuthenticator, appEnv ...string) func(http.Handler) http.Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if header := strings.TrimSpace(r.Header.Get("X-User-ID")); header != "" {
+		env := config.AppEnvDev
+			if len(appEnv) > 0 && appEnv[0] != "" { env = appEnv[0] }
+			if header := strings.TrimSpace(r.Header.Get("X-User-ID")); header != "" && env != config.AppEnvProd {
 				userID, err := uuid.Parse(header)
 				if err != nil || userID == uuid.Nil {
 					writeErrorResponse(w, http.StatusBadRequest, invalidRequestCode, "X-User-ID must be a UUID")
 					return
 				}
 				next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), gameUserContextKey{}, userID)))
+				return
+			}
+			if strings.TrimSpace(r.Header.Get("X-User-ID")) != "" && env == config.AppEnvProd {
+				writeErrorResponse(w, http.StatusUnauthorized, unauthorizedCode, "Authentication is required")
 				return
 			}
 

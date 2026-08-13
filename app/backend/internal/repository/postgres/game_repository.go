@@ -193,3 +193,4 @@ func mapGameStorageError(operation string, err error) error {
 }
 
 var _ usecase.GameRepository = (*GameRepository)(nil)
+var _ usecase.MarketplaceRepository = (*GameRepository)(nil)

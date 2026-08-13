@@ -11,6 +11,7 @@ const (
 	FirstRoomStoryCode      = "FIRST_ROOM"
 	InitialRoomItemCode     = "BOX"
 	CharacterUnlockTarget   = 5
+	ExplorerAchievementTarget = 5
 	DefaultLeaderboardLimit = 10
 )
 
@@ -72,8 +73,10 @@ func ActivityDelta(actionType model.ActionType, category *string) ActivityScoreD
 	case model.ActionTypeAdViewed, model.ActionTypeAdFavorited, model.ActionTypeMessageSent,
 		model.ActionTypeDeliveryUsed, model.ActionTypeReviewLeft, model.ActionTypeBookingCreated:
 		delta.Buyer = 1
-	case model.ActionTypeAdCreated:
+	case model.ActionTypeAdCreated, model.ActionTypeListingSold:
 		delta.Seller = 1
+	case model.ActionTypeListingImproved:
+		delta.Quality = 1
 	}
 
 	if category == nil {
@@ -155,7 +158,7 @@ func leadingCharacter(scores model.ActivityScores) (model.PetCharacter, int) {
 		{model.PetCharacterMechanic, scores.AutoScore},
 		{model.PetCharacterTraveler, scores.TravelScore},
 		{model.PetCharacterArchitect, scores.RealEstateScore},
-		{model.PetCharacterCraftsperson, scores.ServicesScore},
+		{model.PetCharacterCraftsperson, max(scores.ServicesScore, scores.QualityScore)},
 	}
 	best := candidates[0]
 	for _, item := range candidates[1:] {
@@ -189,7 +192,7 @@ func ValidActionType(actionType model.ActionType) bool {
 	switch actionType {
 	case model.ActionTypeAdViewed, model.ActionTypeAdFavorited, model.ActionTypeMessageSent,
 		model.ActionTypeAdCreated, model.ActionTypeDeliveryUsed, model.ActionTypeReviewLeft,
-		model.ActionTypeBookingCreated:
+		model.ActionTypeBookingCreated, model.ActionTypeListingImproved, model.ActionTypeListingSold:
 		return true
 	default:
 		return false

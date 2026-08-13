@@ -7,15 +7,18 @@ import (
 )
 
 type UserStreak struct {
-	UserID         uuid.UUID
-	CurrentStreak  int
-	LongestStreak  int
-	LastActiveDate *time.Time
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	UserID          uuid.UUID
+	CurrentStreak   int
+	LongestStreak   int
+	ProtectionCount int
+	LastActiveDate  *time.Time
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 type DailyQuestStatus string
+
+type DailyQuestRole string
 
 const (
 	DailyQuestStatusActive    DailyQuestStatus = "ACTIVE"
@@ -24,13 +27,21 @@ const (
 	DailyQuestStatusExpired   DailyQuestStatus = "EXPIRED"
 )
 
+const (
+	DailyQuestRoleBuyer     DailyQuestRole = "BUYER"
+	DailyQuestRoleSeller    DailyQuestRole = "SELLER"
+	DailyQuestRoleUniversal DailyQuestRole = "UNIVERSAL"
+)
+
 type DailyQuestTemplate struct {
 	Code         string
 	Title        string
 	Description  string
 	ActionType   ActionType
+	Role         DailyQuestRole
 	Category     *string
 	TargetValue  int
+	XPReward     int
 	RewardType   string
 	RewardAmount int
 	SortOrder    int
@@ -59,4 +70,29 @@ type UserDailyQuest struct {
 type DailyQuestProgress struct {
 	Template DailyQuestTemplate
 	Quest    UserDailyQuest
+}
+
+type DailyGoalStatus string
+
+const (
+	DailyGoalStatusActive   DailyGoalStatus = "ACTIVE"
+	DailyGoalStatusRewarded DailyGoalStatus = "REWARDED"
+	DailyGoalStatusExpired  DailyGoalStatus = "EXPIRED"
+)
+
+type UserDailyGoal struct {
+	ID                   uuid.UUID
+	UserID               uuid.UUID
+	GoalDate             time.Time
+	RequiredCompleted    int
+	CompletedCount       int
+	Status               DailyGoalStatus
+	XPReward             int
+	RewardType           string
+	RewardAmount         int
+	BalancedRewardAmount int
+	RewardedAt           *time.Time
+	BalancedRewardedAt   *time.Time
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
 }

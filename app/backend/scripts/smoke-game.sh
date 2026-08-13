@@ -43,6 +43,6 @@ curl --fail --silent --show-error -H "$auth_header" "$api_url/api/v1/room" | jq 
 curl --fail --silent --show-error -H "$auth_header" "$api_url/api/v1/story" | jq -e '.currentStage == 1' >/dev/null
 curl --fail --silent --show-error -H "$auth_header" "$api_url/api/v1/daily-summary" | jq -e '.actionsCount == 5 and .earnedXp == 30' >/dev/null
 curl --fail --silent --show-error -H "$auth_header" "$api_url/api/v1/leaderboard?period=weekly&limit=10" | jq -e '.currentUser.score == 100' >/dev/null
-curl --fail --silent --show-error -H "$auth_header" "$api_url/api/v1/rewards/balance" | jq -e '.balances[] | select(.type == "AVITO_BONUS" and .balance == 10 and .earnedTotal == 10)' >/dev/null
+curl --fail --silent --show-error -H "$auth_header" "$api_url/api/v1/rewards/balance" | jq -e '.balances[] | select(.type == "AVITO_BONUS" and .balance == 12 and .earnedTotal == 12)' >/dev/null
 
 echo "Avitosha smoke scenario passed for $email"

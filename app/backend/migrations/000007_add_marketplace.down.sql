@@ -1,0 +1,13 @@
+DROP TABLE IF EXISTS listing_deals;
+DROP TABLE IF EXISTS listing_messages;
+DROP TABLE IF EXISTS listing_daily_views;
+DROP TABLE IF EXISTS listing_favorites;
+DROP TABLE IF EXISTS listing_photos;
+DROP TABLE IF EXISTS listings;
+DROP TABLE IF EXISTS listing_categories;
+
+DELETE FROM users
+WHERE id IN (
+    '11111111-1111-1111-1111-111111111111',
+    '22222222-2222-2222-2222-222222222222'
+);

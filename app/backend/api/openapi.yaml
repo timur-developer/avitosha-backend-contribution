@@ -11,8 +11,194 @@ tags:
   - name: auth
   - name: game
   - name: realtime
+  - name: marketplace
 
 paths:
+  /api/v1/listing-categories:
+    get:
+      tags: [marketplace]
+      operationId: listListingCategories
+      summary: List public marketplace categories
+      responses:
+        '200':
+          description: Active categories
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListingCategoryResponse'
+  /api/v1/listings:
+    get:
+      tags: [marketplace]
+      operationId: listListings
+      summary: List public published listings
+      description: This read-only catalog is available to guests.
+      parameters:
+        - $ref: '#/components/parameters/ListingCategory'
+        - $ref: '#/components/parameters/ListingQuery'
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageOffset'
+      responses:
+        '200':
+          description: Published listings page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListingPage'
+    post:
+      tags: [marketplace]
+      operationId: createListing
+      summary: Create a private listing draft
+      description: Requires authentication. Creating a draft does not generate a game effect.
+      security: [ { bearerAuth: [] }, { userIdHeader: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ListingWriteRequest' }
+      responses:
+        '201': { description: Draft created, content: { application/json: { schema: { $ref: '#/components/schemas/Listing' } } } }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+  /api/v1/listings/{listing_id}:
+    parameters: [ { $ref: '#/components/parameters/ListingID' } ]
+    get:
+      tags: [marketplace]
+      operationId: getListing
+      summary: Get a public published listing
+      description: Read-only; viewing does not mutate state. Authenticated clients register a view separately.
+      responses:
+        '200': { description: Listing, content: { application/json: { schema: { $ref: '#/components/schemas/Listing' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [marketplace]
+      operationId: updateListing
+      summary: Edit own listing
+      description: Requires authentication. `eventId` makes the request idempotent. A published listing earns LISTING_IMPROVED only when it closes a previously unawarded quality criterion.
+      security: [ { bearerAuth: [] }, { userIdHeader: [] } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ListingUpdateRequest' } } }
+      responses:
+        '200': { description: Updated listing and optional game feedback, content: { application/json: { schema: { $ref: '#/components/schemas/MarketplaceActionResponse' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/listings/{listing_id}/publish:
+    parameters: [ { $ref: '#/components/parameters/ListingID' } ]
+    post:
+      tags: [marketplace]
+      operationId: publishListing
+      summary: Publish own quality-complete listing
+      description: Requires a non-empty title and price greater than zero. A photo URL and description of at least 150 characters improve listing quality but do not block publication. The server calculates AD_CREATED and game effects; client provides only eventId.
+      security: [ { bearerAuth: [] }, { userIdHeader: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/EventRequest' } } } }
+      responses:
+        '200': { description: Published listing and game feedback, content: { application/json: { schema: { $ref: '#/components/schemas/MarketplaceActionResponse' } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/listings/{listing_id}/unpublish:
+    parameters: [ { $ref: '#/components/parameters/ListingID' } ]
+    post:
+      tags: [marketplace]
+      operationId: unpublishListing
+      summary: Remove own listing from public catalog
+      description: No game effects are generated in this stage.
+      security: [ { bearerAuth: [] }, { userIdHeader: [] } ]
+      responses:
+        '200': { description: Unpublished listing, content: { application/json: { schema: { $ref: '#/components/schemas/Listing' } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/me/listings:
+    get:
+      tags: [marketplace]
+      operationId: listMyListings
+      summary: List authenticated user's listings
+      security: [ { bearerAuth: [] }, { userIdHeader: [] } ]
+      parameters: [ { $ref: '#/components/parameters/PageLimit' }, { $ref: '#/components/parameters/PageOffset' } ]
+      responses:
+        '200': { description: Own listings, content: { application/json: { schema: { $ref: '#/components/schemas/ListingPage' } } } }
+  /api/v1/uploads/listing-photos:
+    post:
+      tags: [marketplace]
+      operationId: createListingPhotoUpload
+      summary: Create a signed MinIO upload form
+      description: Requires authentication. The returned fields are sent directly to the self-hosted S3-compatible MinIO storage as multipart/form-data; append the file field last. The form accepts one JPEG, PNG or WebP file within the configured size limit.
+      security: [ { bearerAuth: [] }, { userIdHeader: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PhotoUploadRequest' }
+      responses:
+        '201': { description: Signed upload form, content: { application/json: { schema: { $ref: '#/components/schemas/PhotoUploadForm' } } } }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '503': { $ref: '#/components/responses/InternalError' }
+  /api/v1/listings/{listing_id}/favorite:
+    parameters: [ { $ref: '#/components/parameters/ListingID' } ]
+    put:
+      tags: [marketplace]
+      operationId: addFavorite
+      summary: Add another user's public listing to favorites
+      description: "eventId is idempotent. A newly created favorite generates AD_FAVORITED server-side."
+      security: [ { bearerAuth: [] }, { userIdHeader: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/EventRequest' } } } }
+      responses: { '200': { description: Favorite state and game feedback, content: { application/json: { schema: { $ref: '#/components/schemas/MarketplaceActionResponse' } } } } }
+    delete:
+      tags: [marketplace]
+      operationId: removeFavorite
+      summary: Remove listing from favorites
+      security: [ { bearerAuth: [] }, { userIdHeader: [] } ]
+      responses: { '200': { description: Favorite state, content: { application/json: { schema: { $ref: '#/components/schemas/FavoriteMutation' } } } } }
+  /api/v1/me/favorites:
+    get:
+      tags: [marketplace]
+      operationId: listFavorites
+      summary: List authenticated user's favorites
+      security: [ { bearerAuth: [] }, { userIdHeader: [] } ]
+      parameters: [ { $ref: '#/components/parameters/PageLimit' }, { $ref: '#/components/parameters/PageOffset' } ]
+      responses: { '200': { description: Favorite listings, content: { application/json: { schema: { $ref: '#/components/schemas/ListingPage' } } } } }
+  /api/v1/listings/{listing_id}/views:
+    parameters: [ { $ref: '#/components/parameters/ListingID' } ]
+    post:
+      tags: [marketplace]
+      operationId: registerListingView
+      summary: Register an authenticated unique listing view
+      description: A user can have one counted view of a listing per UTC day. GET remains read-only. A counted view generates AD_VIEWED server-side.
+      security: [ { bearerAuth: [] }, { userIdHeader: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/EventRequest' } } } }
+      responses: { '200': { description: View registration and game feedback, content: { application/json: { schema: { $ref: '#/components/schemas/MarketplaceActionResponse' } } } } }
+  /api/v1/listings/{listing_id}/messages:
+    parameters: [ { $ref: '#/components/parameters/ListingID' } ]
+    get:
+      tags: [marketplace]
+      operationId: listListingMessages
+      summary: List messages visible to the authenticated user
+      description: Returns an empty list when the user has not started a conversation. Existing messages remain visible only to their participants.
+      security: [ { bearerAuth: [] }, { userIdHeader: [] } ]
+      responses: { '200': { description: Messages, content: { application/json: { schema: { $ref: '#/components/schemas/ListingMessagesResponse' } } } } }
+    post:
+      tags: [marketplace]
+      operationId: contactSeller
+      summary: Send the first message to a listing seller
+      description: Repeating the action returns the first stored message. The first contact generates MESSAGE_SENT server-side.
+      security: [ { bearerAuth: [] }, { userIdHeader: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ContactSellerRequest' } } } }
+      responses: { '201': { description: First-contact result and game feedback, content: { application/json: { schema: { $ref: '#/components/schemas/MarketplaceActionResponse' } } } } }
+  /api/v1/listings/{listing_id}/purchase:
+    parameters: [ { $ref: '#/components/parameters/ListingID' } ]
+    post:
+      tags: [marketplace]
+      operationId: purchaseListing
+      summary: Purchase another user's published listing
+      description: A regular listing becomes sold after purchase. A demo listing remains public and can be purchased once per authenticated buyer. The server generates LISTING_SOLD and, when deliveryUsed is true, DELIVERY_USED in one transaction.
+      security: [ { bearerAuth: [] }, { userIdHeader: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PurchaseListingRequest' } } } }
+      responses:
+        '201': { description: Completed demo deal and game feedback, content: { application/json: { schema: { $ref: '#/components/schemas/MarketplaceActionResponse' } } } }
+        '409':
+          description: The demo purchase was already completed, the listing is unavailable, or eventId conflicts with another action.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              examples:
+                demoPurchaseAlreadyCompleted:
+                  value: { error: { code: demo_purchase_already_completed, message: This demo purchase has already been completed } }
   /healthz:
     get:
       tags: [health]
@@ -224,6 +410,33 @@ paths:
                 $ref: '#/components/schemas/TaskProgress'
         '404':
           $ref: '#/components/responses/NotFound'
+  /api/v1/tasks/{task_id}/advice:
+    get:
+      tags: [game]
+      operationId: getTaskAdvice
+      summary: Get a short personalized Avitosha tip for a task
+      description: Uses the configured ProxyAPI model when available and returns a deterministic safe fallback otherwise. This endpoint never changes progress, rewards, or balances.
+      security:
+        - bearerAuth: []
+        - userIdHeader: []
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Personalized or fallback task advice
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskAdvice'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/v1/actions:
     post:
       tags: [game]
@@ -345,7 +558,7 @@ paths:
       tags: [game]
       operationId: getRewardBalances
       summary: Get the current user's reward balances
-      description: Returns balances actually credited from tasks, streak rewards and daily quests. AVITO_BONUS is initialized with a zero balance during user registration.
+      description: Returns balances actually credited from tasks, daily goals, balanced-day bonuses and streak rewards. AVITO_BONUS is initialized with a zero balance during user registration.
       security:
         - bearerAuth: []
         - userIdHeader: []
@@ -396,6 +609,28 @@ paths:
           $ref: '#/components/responses/Unauthorized'
 
 components:
+  parameters:
+    ListingID:
+      name: listing_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ListingCategory:
+      name: category
+      in: query
+      schema: { type: string, example: FURNITURE }
+    ListingQuery:
+      name: query
+      in: query
+      schema: { type: string, maxLength: 120 }
+    PageLimit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    PageOffset:
+      name: offset
+      in: query
+      schema: { type: integer, minimum: 0, default: 0 }
   securitySchemes:
     bearerAuth:
       type: http
@@ -416,6 +651,12 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
     Unauthorized:
       description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Forbidden
       content:
         application/json:
           schema:
@@ -568,9 +809,167 @@ components:
           maxLength: 20
           pattern: '^[А-Яа-яЁё]+(?:[ -][А-Яа-яЁё]+)*$'
           example: Мурзик
+    ListingCategory:
+      type: object
+      required: [code, name, sortOrder]
+      properties:
+        code: { type: string, example: FURNITURE }
+        name: { type: string, example: Мебель и интерьер }
+        sortOrder: { type: integer, example: 1 }
+    ListingCategoryResponse:
+      type: object
+      required: [categories]
+      properties:
+        categories: { type: array, items: { $ref: '#/components/schemas/ListingCategory' } }
+    ListingStatus:
+      type: string
+      enum: [DRAFT, PUBLISHED, UNPUBLISHED, SOLD]
+    ListingQuality:
+      type: object
+      required: [score, isEligible, missingFields, nextActionHint]
+      properties:
+        score: { type: integer, minimum: 0, maximum: 3 }
+        isEligible: { type: boolean, description: "True when the listing can be published (requires a price greater than zero)." }
+        missingFields: { type: array, items: { type: string, enum: [price, photo, description] } }
+        nextActionHint: { type: string }
+    Listing:
+      type: object
+      required: [id, ownerId, categoryCode, title, description, priceKopecks, status, isDemo, photoUrls, quality]
+      properties:
+        id: { type: string, format: uuid }
+        ownerId: { type: string, format: uuid }
+        categoryCode: { type: string }
+        title: { type: string, maxLength: 120 }
+        description: { type: string, maxLength: 5000 }
+        priceKopecks: { type: integer, format: int64, minimum: 0, example: 249000 }
+        status: { $ref: '#/components/schemas/ListingStatus' }
+        isDemo: { type: boolean }
+        publishedAt: { type: string, format: date-time, nullable: true }
+        soldAt: { type: string, format: date-time, nullable: true }
+        photoUrls: { type: array, maxItems: 10, items: { type: string, format: uri } }
+        quality: { $ref: '#/components/schemas/ListingQuality' }
+    ListingWriteRequest:
+      type: object
+      additionalProperties: false
+      required: [categoryCode, title, description, priceKopecks, photoUrls]
+      properties:
+        categoryCode: { type: string, example: FURNITURE }
+        title: { type: string, minLength: 1, maxLength: 120, example: Настольная лампа }
+        description: { type: string, maxLength: 5000 }
+        priceKopecks: { type: integer, format: int64, minimum: 0 }
+        photoUrls: { type: array, maxItems: 10, items: { type: string, format: uri } }
+        eventId: { type: string, format: uuid }
+    PhotoUploadRequest:
+      type: object
+      additionalProperties: false
+      required: [fileName, contentType, size]
+      properties:
+        fileName: { type: string, minLength: 1, example: sofa.jpg }
+        contentType: { type: string, enum: [image/jpeg, image/png, image/webp] }
+        size: { type: integer, format: int64, minimum: 1, example: 524288 }
+    PhotoUploadForm:
+      type: object
+      required: [url, fields, publicUrl, objectKey, expiresAt, maxFileSize]
+      properties:
+        url: { type: string, format: uri-reference, example: '/storage/avitosha-photos' }
+        fields:
+          type: object
+          additionalProperties: { type: string }
+          description: Signed multipart fields. Send every field unchanged and append the binary `file` part last.
+        publicUrl: { type: string, format: uri-reference }
+        objectKey: { type: string, example: 'listing-photos/user-id/object-id.jpg' }
+        expiresAt: { type: string, format: date-time }
+        maxFileSize: { type: integer, format: int64 }
+    ListingUpdateRequest:
+      allOf:
+        - $ref: '#/components/schemas/ListingWriteRequest'
+        - type: object
+          required: [eventId]
+    ListingPage:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Listing' } }
+        total: { type: integer, minimum: 0 }
+        limit: { type: integer }
+        offset: { type: integer }
+    FavoriteMutation:
+      type: object
+      required: [favorite]
+      properties:
+        favorite: { type: boolean }
+        created: { type: boolean }
+        removed: { type: boolean }
+    ViewRegistration:
+      type: object
+      required: [counted]
+      properties:
+        counted: { type: boolean }
+    ContactSellerRequest:
+      type: object
+      additionalProperties: false
+      required: [body, eventId]
+      properties:
+        body: { type: string, minLength: 1, maxLength: 2000 }
+        eventId: { type: string, format: uuid }
+    ListingMessage:
+      type: object
+      required: [id, listingId, senderId, recipientId, body, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        listingId: { type: string, format: uuid }
+        senderId: { type: string, format: uuid }
+        recipientId: { type: string, format: uuid }
+        body: { type: string }
+        createdAt: { type: string, format: date-time }
+    ContactSellerResponse:
+      type: object
+      required: [message, first]
+      properties:
+        message: { $ref: '#/components/schemas/ListingMessage' }
+        first: { type: boolean }
+    ListingMessagesResponse:
+      type: object
+      required: [messages]
+      properties:
+        messages: { type: array, items: { $ref: '#/components/schemas/ListingMessage' } }
+    PurchaseListingRequest:
+      type: object
+      additionalProperties: false
+      required: [deliveryUsed, eventId]
+      properties:
+        deliveryUsed: { type: boolean }
+        eventId: { type: string, format: uuid }
+    EventRequest:
+      type: object
+      additionalProperties: false
+      required: [eventId]
+      properties:
+        eventId: { type: string, format: uuid }
+    MarketplaceActionResponse:
+      type: object
+      properties:
+        listing: { $ref: '#/components/schemas/Listing' }
+        deal: { $ref: '#/components/schemas/ListingDeal' }
+        message: { $ref: '#/components/schemas/ListingMessage' }
+        favorite: { type: boolean }
+        counted: { type: boolean }
+        first: { type: boolean }
+        actionResult: { $ref: '#/components/schemas/ActionResult' }
+    ListingDeal:
+      type: object
+      required: [id, listingId, buyerId, sellerId, deliveryUsed, completedAt]
+      properties:
+        id: { type: string, format: uuid }
+        listingId: { type: string, format: uuid }
+        buyerId: { type: string, format: uuid }
+        sellerId: { type: string, format: uuid }
+        deliveryUsed: { type: boolean }
+        completedAt: { type: string, format: date-time }
+
     ActionType:
       type: string
-      enum: [AD_VIEWED, AD_FAVORITED, MESSAGE_SENT, AD_CREATED, DELIVERY_USED, REVIEW_LEFT, BOOKING_CREATED]
+      enum: [AD_VIEWED, AD_FAVORITED, MESSAGE_SENT, AD_CREATED, DELIVERY_USED, REVIEW_LEFT, BOOKING_CREATED, LISTING_IMPROVED, LISTING_SOLD]
     TaskProgress:
       type: object
       required: [id, code, title, description, petPhrase, actionType, progress, target, status, xpReward, avitoRewardAmount]
@@ -611,6 +1010,22 @@ components:
         storyStage:
           type: integer
           nullable: true
+    TaskAdvice:
+      type: object
+      additionalProperties: false
+      required: [taskId, text, generatedByAi]
+      properties:
+        taskId:
+          type: string
+          format: uuid
+        text:
+          type: string
+          minLength: 1
+          maxLength: 220
+          example: Сравни фотографии, состояние товара и условия доставки.
+        generatedByAi:
+          type: boolean
+          description: True when ProxyAPI returned a valid Qwen response; false for the safe local fallback.
     ActionRequest:
       type: object
       additionalProperties: false
@@ -838,15 +1253,18 @@ components:
           type: integer
         source:
           type: string
-          enum: [TASK_COMPLETION, DAILY_QUEST, STREAK]
+          enum: [TASK_COMPLETION, DAILY_QUEST, DAILY_GOAL, BALANCED_DAY, STREAK]
     StreakOverview:
       type: object
-      required: [current, longest, activeToday, reward]
+      required: [current, longest, protections, activeToday, reward]
       properties:
         current:
           type: integer
         longest:
           type: integer
+        protections:
+          type: integer
+          description: Number of one-day streak shields available.
         lastActiveDate:
           type: string
           format: date
@@ -857,7 +1275,7 @@ components:
           $ref: '#/components/schemas/RewardOffer'
     DailyQuest:
       type: object
-      required: [date, code, title, description, actionType, progress, target, status, reward]
+      required: [date, code, title, description, actionType, role, progress, target, status, xpReward]
       properties:
         date:
           type: string
@@ -870,7 +1288,10 @@ components:
           type: string
         actionType:
           type: string
-          enum: [AD_VIEWED, AD_FAVORITED, MESSAGE_SENT, AD_CREATED, DELIVERY_USED, REVIEW_LEFT, BOOKING_CREATED]
+          enum: [AD_VIEWED, AD_FAVORITED, MESSAGE_SENT, AD_CREATED, DELIVERY_USED, REVIEW_LEFT, BOOKING_CREATED, LISTING_IMPROVED, LISTING_SOLD]
+        role:
+          type: string
+          enum: [BUYER, SELLER, UNIVERSAL]
         category:
           type: string
           nullable: true
@@ -881,27 +1302,35 @@ components:
         status:
           type: string
           enum: [ACTIVE, COMPLETED, REWARDED, EXPIRED]
-        reward:
-          $ref: '#/components/schemas/RewardOffer'
-    TomorrowDailyQuest:
+        xpReward:
+          type: integer
+    DailyGoal:
       type: object
-      required: [code, title, description, actionType, target, reward]
+      required: [date, quests, completed, required, status, xpReward, reward, balancedCompleted, balancedReward]
       properties:
-        code:
+        date:
           type: string
-        title:
+          format: date
+        quests:
+          type: array
+          minItems: 5
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/DailyQuest'
+        completed:
+          type: integer
+        required:
+          type: integer
+        status:
           type: string
-        description:
-          type: string
-        actionType:
-          type: string
-          enum: [AD_VIEWED, AD_FAVORITED, MESSAGE_SENT, AD_CREATED, DELIVERY_USED, REVIEW_LEFT, BOOKING_CREATED]
-        category:
-          type: string
-          nullable: true
-        target:
+          enum: [ACTIVE, REWARDED, EXPIRED]
+        xpReward:
           type: integer
         reward:
+          $ref: '#/components/schemas/RewardOffer'
+        balancedCompleted:
+          type: boolean
+        balancedReward:
           $ref: '#/components/schemas/RewardOffer'
     RewardGoal:
       type: object
@@ -926,7 +1355,7 @@ components:
           format: int64
     TomorrowPreview:
       type: object
-      required: [date, streakAfterReturn, streakReward, dailyQuest]
+      required: [date, streakAfterReturn, streakReward, tasksCount, required, buyerTasks, sellerTasks, universalTasks, xpReward, reward, balancedReward]
       properties:
         date:
           type: string
@@ -935,20 +1364,34 @@ components:
           type: integer
         streakReward:
           $ref: '#/components/schemas/RewardOffer'
-        dailyQuest:
-          $ref: '#/components/schemas/TomorrowDailyQuest'
+        tasksCount:
+          type: integer
+        required:
+          type: integer
+        buyerTasks:
+          type: integer
+        sellerTasks:
+          type: integer
+        universalTasks:
+          type: integer
+        xpReward:
+          type: integer
+        reward:
+          $ref: '#/components/schemas/RewardOffer'
+        balancedReward:
+          $ref: '#/components/schemas/RewardOffer'
         nextGoal:
           allOf:
             - $ref: '#/components/schemas/RewardGoal'
           nullable: true
     RetentionOverview:
       type: object
-      required: [streak, dailyQuest, tomorrow]
+      required: [streak, dailyGoal, tomorrow]
       properties:
         streak:
           $ref: '#/components/schemas/StreakOverview'
-        dailyQuest:
-          $ref: '#/components/schemas/DailyQuest'
+        dailyGoal:
+          $ref: '#/components/schemas/DailyGoal'
         tomorrow:
           $ref: '#/components/schemas/TomorrowPreview'
     RewardCatalogEntry:

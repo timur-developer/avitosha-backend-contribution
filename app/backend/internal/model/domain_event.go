@@ -25,7 +25,16 @@ const (
 	DomainEventRewardCatalogUnlocked   DomainEventType = "REWARD_CATALOG_UNLOCKED"
 	DomainEventDailyQuestUpdated       DomainEventType = "DAILY_QUEST_UPDATED"
 	DomainEventDailyQuestCompleted     DomainEventType = "DAILY_QUEST_COMPLETED"
+	DomainEventDailyGoalCompleted      DomainEventType = "DAILY_GOAL_COMPLETED"
+	DomainEventBalancedDayCompleted    DomainEventType = "BALANCED_DAY_COMPLETED"
 	DomainEventStreakUpdated           DomainEventType = "STREAK_UPDATED"
+	DomainEventListingViewed           DomainEventType = "LISTING_VIEWED"
+	DomainEventListingFavorited        DomainEventType = "LISTING_FAVORITED"
+	DomainEventSellerContacted         DomainEventType = "SELLER_CONTACTED"
+	DomainEventListingPublished        DomainEventType = "LISTING_PUBLISHED"
+	DomainEventListingImproved         DomainEventType = "LISTING_IMPROVED"
+	DomainEventListingSold             DomainEventType = "LISTING_SOLD"
+	DomainEventDeliveryUsed            DomainEventType = "DELIVERY_USED"
 )
 
 type DomainEvent struct {

@@ -14,7 +14,7 @@ func (fakeAppTxManager) WithinTx(ctx context.Context, fn func(context.Context) e
 }
 
 func TestNewGameServiceBuildsFromSharedInfrastructure(t *testing.T) {
-	service := newGameService(&pgxpool.Pool{}, fakeAppTxManager{}, nil)
+	service := newGameService(&pgxpool.Pool{}, fakeAppTxManager{}, nil, nil)
 
 	if service == nil {
 		t.Fatal("game service is nil")

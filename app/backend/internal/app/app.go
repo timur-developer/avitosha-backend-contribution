@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	backendai "github.com/guitaramust-sudo/Avitosha/app/backend/internal/ai"
 	backendauth "github.com/guitaramust-sudo/Avitosha/app/backend/internal/auth"
 	"github.com/guitaramust-sudo/Avitosha/app/backend/internal/config"
 	"github.com/guitaramust-sudo/Avitosha/app/backend/internal/handler"
@@ -63,7 +64,16 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 	}
 	txManager := postgres.NewTxManager(pool)
 	eventHub := realtime.NewHub(realtime.DefaultBufferSize)
-	game := newGameService(pool, txManager, eventHub)
+	adviceGenerator, err := newAdviceGenerator(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("create advice generator: %w", err)
+	}
+	game := newGameService(pool, txManager, eventHub, adviceGenerator)
+	marketplace := usecase.NewMarketplaceService(postgres.NewGameRepository(pool), txManager, uuid.New, game)
+	photoUploads, err := newPhotoUploadService(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("create photo upload service: %w", err)
+	}
 
 	authService, err := usecase.NewAuthService(usecase.AuthConfig{
 		AccessTokenTTL:  cfg.AccessTokenTTL,
@@ -93,10 +103,13 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		DB:                       pool,
 		AuthService:              authService,
 		AccessTokenAuthenticator: accessTokenAuthenticator,
+		AppEnv:                  cfg.AppEnv,
 		FrontendOrigin:           cfg.FrontendOrigin,
 		RefreshTokenTTL:          cfg.RefreshTokenTTL,
 		SecureRefreshCookie:      cfg.AppEnv == config.AppEnvProd,
 		GameService:              game,
+		MarketplaceService:       marketplace,
+		PhotoUploadService:       photoUploads,
 		EventHub:                 eventHub,
 	})
 	server := &http.Server{
@@ -110,14 +123,36 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 	return newApp(logger, server, pool, cfg.ShutdownTimeout), nil
 }
 
+func newPhotoUploadService(cfg config.Config) (*usecase.PhotoUploadService, error) {
+	if !cfg.ObjectStorageEnabled() {
+		return nil, nil
+	}
+	return usecase.NewPhotoUploadService(usecase.PhotoUploadConfig{
+		Endpoint: cfg.S3Endpoint, Region: cfg.S3Region, Bucket: cfg.S3Bucket,
+		AccessKeyID: cfg.S3AccessKeyID, SecretAccessKey: cfg.S3SecretAccessKey,
+		PublicBaseURL: cfg.S3PublicBaseURL, TTL: cfg.S3UploadTTL, MaxFileSize: cfg.S3MaxFileSize,
+	}, uuid.New)
+}
+
 func newGameService(
 	pool *pgxpool.Pool,
 	txManager usecase.TxManager,
 	publisher usecase.DomainEventPublisher,
+	advice usecase.AdviceGenerator,
 ) *usecase.GameService {
 	return usecase.NewGameService(usecase.GameServiceDependencies{
 		Repository: postgres.NewGameRepository(pool), TxManager: txManager,
-		IDGenerator: uuid.New, Publisher: publisher,
+		IDGenerator: uuid.New, Publisher: publisher, Advice: advice,
+	})
+}
+
+func newAdviceGenerator(cfg config.Config) (usecase.AdviceGenerator, error) {
+	if cfg.ProxyAPIKey == "" {
+		return nil, nil
+	}
+	return backendai.NewProxyAPIAdviceGenerator(backendai.ProxyAPIConfig{
+		APIKey: cfg.ProxyAPIKey, BaseURL: cfg.ProxyAPIBaseURL, Model: cfg.ProxyAPIModel,
+		Client: &http.Client{Timeout: cfg.ProxyAPITimeout},
 	})
 }
 

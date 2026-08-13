@@ -35,6 +35,7 @@ type ActivityScoreDelta struct {
 	Travel     int
 	RealEstate int
 	Services   int
+	Quality    int
 }
 
 type GameRepository interface {
@@ -59,6 +60,9 @@ type GameRepository interface {
 	UpdateTaskProgress(context.Context, model.UserTask) error
 
 	InsertAction(context.Context, model.UserAction) (model.UserAction, bool, error)
+	CountUserActions(context.Context, uuid.UUID, model.ActionType, *string, *string) (int, error)
+	CountDistinctUserActionEntities(context.Context, uuid.UUID, model.ActionType) (int, error)
+	CountUserActionsOnDate(context.Context, uuid.UUID, model.ActionType, time.Time, uuid.UUID) (int, error)
 	CompleteAction(context.Context, uuid.UUID, time.Time, []model.DomainEvent) error
 	InsertDomainEvents(context.Context, []model.DomainEvent) error
 
@@ -84,7 +88,9 @@ type GameRepository interface {
 	ListActiveDailyQuestTemplates(context.Context) ([]model.DailyQuestTemplate, error)
 	ExpireDailyQuestsBefore(context.Context, uuid.UUID, time.Time, time.Time) error
 	AssignDailyQuest(context.Context, model.UserDailyQuest) (model.UserDailyQuest, error)
-	GetDailyQuestProgress(context.Context, uuid.UUID, time.Time) (model.DailyQuestProgress, error)
-	GetDailyQuestProgressForUpdate(context.Context, uuid.UUID, time.Time) (model.DailyQuestProgress, error)
+	ListDailyQuestProgress(context.Context, uuid.UUID, time.Time) ([]model.DailyQuestProgress, error)
+	ListDailyQuestProgressForUpdate(context.Context, uuid.UUID, time.Time) ([]model.DailyQuestProgress, error)
 	UpdateDailyQuest(context.Context, model.UserDailyQuest) error
+	GetOrCreateDailyGoal(context.Context, model.UserDailyGoal) (model.UserDailyGoal, error)
+	UpdateDailyGoal(context.Context, model.UserDailyGoal) error
 }

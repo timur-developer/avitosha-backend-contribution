@@ -16,6 +16,15 @@ type Hub struct {
 	byUser     map[uuid.UUID]map[*Subscription]struct{}
 }
 
+type EventSubscription interface {
+	Messages() <-chan []model.DomainEvent
+	Close()
+}
+
+type EventSubscriber interface {
+	Subscribe(uuid.UUID) EventSubscription
+}
+
 type Subscription struct {
 	hub      *Hub
 	userID   uuid.UUID
@@ -30,7 +39,7 @@ func NewHub(bufferSize int) *Hub {
 	return &Hub{bufferSize: bufferSize, byUser: make(map[uuid.UUID]map[*Subscription]struct{})}
 }
 
-func (hub *Hub) Subscribe(userID uuid.UUID) *Subscription {
+func (hub *Hub) Subscribe(userID uuid.UUID) EventSubscription {
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
 

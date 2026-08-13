@@ -48,3 +48,28 @@ func TestMapSessionError(t *testing.T) {
 		}
 	})
 }
+
+func TestMapMarketplaceStorageError(t *testing.T) {
+	t.Run("maps completed demo purchase", func(t *testing.T) {
+		err := mapMarketplaceStorageError("create listing deal", &pgconn.PgError{
+			Code:           uniqueViolationCode,
+			ConstraintName: "listing_deals_listing_id_buyer_id_key",
+		})
+		if !errors.Is(err, usecase.ErrDemoPurchaseCompleted) {
+			t.Fatalf("errors.Is(err, ErrDemoPurchaseCompleted) = false, err = %v", err)
+		}
+	})
+
+	t.Run("does not map other unique violations as completed demo purchase", func(t *testing.T) {
+		err := mapMarketplaceStorageError("create listing deal", &pgconn.PgError{
+			Code:           uniqueViolationCode,
+			ConstraintName: "listing_deals_pkey",
+		})
+		if errors.Is(err, usecase.ErrDemoPurchaseCompleted) {
+			t.Fatalf("unexpected ErrDemoPurchaseCompleted, err = %v", err)
+		}
+		if !errors.Is(err, usecase.ErrUnexpectedStorage) {
+			t.Fatalf("errors.Is(err, ErrUnexpectedStorage) = false, err = %v", err)
+		}
+	})
+}

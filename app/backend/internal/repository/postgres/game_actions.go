@@ -51,6 +51,38 @@ WHERE event_id = $1
 	return existing, false, nil
 }
 
+func (repository *GameRepository) CountUserActions(ctx context.Context, userID uuid.UUID, actionType model.ActionType, category, entityID *string) (int, error) {
+	var count int
+	err := executorFromContext(ctx, repository.executor).QueryRow(ctx, `
+SELECT COUNT(*) FROM user_actions
+WHERE user_id=$1 AND action_type=$2 AND ($3::text IS NULL OR category=$3) AND ($4::text IS NULL OR entity_id=$4)
+	`, userID, actionType, category, entityID).Scan(&count)
+	if err != nil { return 0, mapGameStorageError("count user actions", err) }
+	return count, nil
+}
+
+func (repository *GameRepository) CountDistinctUserActionEntities(ctx context.Context, userID uuid.UUID, actionType model.ActionType) (int, error) {
+	var count int
+	err := executorFromContext(ctx, repository.executor).QueryRow(ctx, `
+SELECT COUNT(DISTINCT entity_id) FROM user_actions
+WHERE user_id=$1 AND action_type=$2 AND entity_id IS NOT NULL
+  AND metadata->>'source' = 'marketplace.view'
+	`, userID, actionType).Scan(&count)
+	if err != nil { return 0, mapGameStorageError("count distinct user action entities", err) }
+	return count, nil
+}
+
+func (repository *GameRepository) CountUserActionsOnDate(ctx context.Context, userID uuid.UUID, actionType model.ActionType, date time.Time, excludeEventID uuid.UUID) (int, error) {
+	var count int
+	err := executorFromContext(ctx, repository.executor).QueryRow(ctx, `
+	SELECT COUNT(*) FROM user_actions
+	WHERE user_id=$1 AND action_type=$2 AND event_id <> $3
+	  AND (occurred_at AT TIME ZONE 'Europe/Moscow')::date = $4::date
+	`, userID, actionType, excludeEventID, date.UTC()).Scan(&count)
+	if err != nil { return 0, mapGameStorageError("count dated user actions", err) }
+	return count, nil
+}
+
 func (repository *GameRepository) CompleteAction(
 	ctx context.Context,
 	actionID uuid.UUID,

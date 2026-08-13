@@ -271,14 +271,14 @@ SELECT COUNT(*) FROM reward_transactions WHERE user_id = $1
 `, user.ID).Scan(&rewardTransactions); err != nil {
 		t.Fatalf("count reward transactions: %v", err)
 	}
-	if pet.GrowthXP != 30 || story.Progress.CurrentStage != 1 || weekly.Score != 100 || weekly.CompletedTasks != 1 ||
+	if pet.GrowthXP < 30 || pet.GrowthXP > 40 || story.Progress.CurrentStage != 1 || weekly.Score != pet.GrowthXP+70 || weekly.CompletedTasks != 1 ||
 		len(balances) != 1 || balances[0].Balance != 10 || balances[0].EarnedTotal != 10 || rewardTransactions != 1 {
 		t.Fatalf("pet XP = %d, story = %d, weekly = %+v, balances = %+v, reward transactions = %d",
 			pet.GrowthXP, story.Progress.CurrentStage, weekly, balances, rewardTransactions)
 	}
 }
 
-func TestFirstActionCreditsStreakRewardWithoutSQLTypeConflict(t *testing.T) {
+func TestFirstActionDoesNotCreditStreakBeforeDailyGoal(t *testing.T) {
 	pool := newTestPool(t)
 	userRepository := postgres.NewUserRepository(pool)
 	user, err := userRepository.Create(context.Background(), usecase.CreateUserParams{
@@ -311,8 +311,15 @@ func TestFirstActionCreditsStreakRewardWithoutSQLTypeConflict(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list reward balances: %v", err)
 	}
-	if len(balances) != 1 || balances[0].Balance != 2 || balances[0].EarnedTotal != 2 {
-		t.Fatalf("reward balances = %+v, want streak reward balance 2", balances)
+	if len(balances) != 1 || balances[0].Balance != 0 || balances[0].EarnedTotal != 0 {
+		t.Fatalf("reward balances = %+v, want no reward before daily goal", balances)
+	}
+	summary, err := service.GetDailySummary(context.Background(), user.ID, now)
+	if err != nil {
+		t.Fatalf("GetDailySummary() error = %v", err)
+	}
+	if summary.Retention.Streak.ActiveToday || summary.Retention.DailyGoal.Status != model.DailyGoalStatusActive {
+		t.Fatalf("streak = %+v, daily goal = %+v", summary.Retention.Streak, summary.Retention.DailyGoal)
 	}
 }
 

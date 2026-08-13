@@ -25,6 +25,7 @@ type GameUseCase interface {
 	RenamePet(context.Context, uuid.UUID, string, time.Time) (usecase.GameProfile, error)
 	ListTasks(context.Context, uuid.UUID, time.Time) ([]model.TaskProgress, error)
 	GetTask(context.Context, uuid.UUID, uuid.UUID, time.Time) (model.TaskProgress, error)
+	GetTaskAdvice(context.Context, uuid.UUID, uuid.UUID, time.Time) (usecase.TaskAdvice, error)
 	GetRoom(context.Context, uuid.UUID, time.Time) ([]model.RoomItemProgress, error)
 	GetStory(context.Context, uuid.UUID, time.Time) (model.StorySnapshot, error)
 	GetDailySummary(context.Context, uuid.UUID, time.Time) (usecase.DailySummary, error)
@@ -111,6 +112,24 @@ func (handler GameHandler) GetTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, newTaskDTO(task))
+}
+
+func (handler GameHandler) GetTaskAdvice(w http.ResponseWriter, r *http.Request) {
+	userID, ok := handler.requireUser(w, r)
+	if !ok {
+		return
+	}
+	taskID, err := uuid.Parse(chi.URLParam(r, "task_id"))
+	if err != nil {
+		writeErrorResponse(w, http.StatusBadRequest, invalidRequestCode, "task_id must be a UUID")
+		return
+	}
+	advice, err := handler.service.GetTaskAdvice(r.Context(), userID, taskID, handler.now())
+	if err != nil {
+		handler.writeError(w, r, "get_task_advice", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, newTaskAdviceDTO(advice))
 }
 
 func (handler GameHandler) ProcessAction(w http.ResponseWriter, r *http.Request) {
